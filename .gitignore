@@ -88,3 +88,6 @@ kernel_meta/
 
 # input files
 /input
+
+# model files
+/model
