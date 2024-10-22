@@ -1,13 +1,16 @@
-_BASE_: [
-  '../datasets/coco_detection.yml',
-  '../runtime.yml',
-  '../ppyoloe/_base_/optimizer_300e.yml',
-  '../ppyoloe/_base_/ppyoloe_crn.yml',
-  '../ppyoloe/_base_/ppyoloe_reader.yml',
-]
+_BASE_:
+  [
+    "../datasets/coco_detection.yml",
+    "../runtime.yml",
+    "../ppyoloe/_base_/optimizer_300e.yml",
+    "../ppyoloe/_base_/ppyoloe_crn.yml",
+    "../ppyoloe/_base_/ppyoloe_reader.yml",
+  ]
 log_iter: 100
 snapshot_epoch: 4
-weights: output/mot_ppyoloe_l_36e_ppvehicle/model_final
+
+# 推論用のモデルとパラメータを指定
+weights: ./model/mot_ppyoloe_l_36e_ppvehicle.pdparams
 
 pretrain_weights: https://paddledet.bj.bcebos.com/models/ppyoloe_crn_l_300e_coco.pdparams
 depth_mult: 1.0
@@ -15,24 +18,21 @@ width_mult: 1.0
 
 num_classes: 1
 
-TrainDataset:
-  !COCODataSet
-    image_dir: ""
-    anno_path: annotations/train_all.json
-    dataset_dir: dataset/ppvehicle
-    data_fields: ['image', 'gt_bbox', 'gt_class', 'is_crowd']
-    allow_empty: true
+TrainDataset: !COCODataSet
+  image_dir: ""
+  anno_path: annotations/train_all.json
+  dataset_dir: dataset/ppvehicle
+  data_fields: ["image", "gt_bbox", "gt_class", "is_crowd"]
+  allow_empty: true
 
-EvalDataset:
-  !COCODataSet
-    image_dir: ""
-    anno_path: annotations/val_all.json
-    dataset_dir: dataset/ppvehicle
+EvalDataset: !COCODataSet
+  image_dir: ""
+  anno_path: annotations/val_all.json
+  dataset_dir: dataset/ppvehicle
 
-TestDataset:
-  !ImageFolder
-    anno_path: annotations/val_all.json
-    dataset_dir: dataset/ppvehicle
+TestDataset: !ImageFolder
+  anno_path: annotations/val_all.json
+  dataset_dir: dataset/ppvehicle
 
 TrainReader:
   batch_size: 8

@@ -3,15 +3,15 @@ visual: True
 warmup_frame: 50
 
 DET:
-  model_dir: https://bj.bcebos.com/v1/paddledet/models/pipeline/mot_ppyoloe_l_36e_ppvehicle.zip
+  model_dir: ./model/mot_ppyoloe_l_36e_ppvehicle
   batch_size: 1
 
 MOT:
-  model_dir: https://bj.bcebos.com/v1/paddledet/models/pipeline/mot_ppyoloe_l_36e_ppvehicle.zip
+  model_dir: ./model/mot_ppyoloe_l_36e_ppvehicle
   tracker_config: deploy/pipeline/config/tracker_config.yml
   batch_size: 1
   skip_frame_num: -1 # preferably no more than 3
-  enable: False
+  enable: True
 
 VEHICLE_PLATE:
   det_model_dir: https://bj.bcebos.com/v1/paddledet/models/pipeline/ch_PP-OCRv3_det_infer.tar.gz
@@ -45,4 +45,4 @@ VEHICLE_RETROGRADE:
   keep_right_flag: True
   deviation: 23
   move_scale: 0.01
-  fence_line: []   #[x1,y1,x2,y2] y2>y1.
+  fence_line: [] #[x1,y1,x2,y2] y2>y1.
