@@ -33,6 +33,7 @@ except Exception:
 
 # CSVファイルに書き出すため追加
 import csv
+import datetime
 
 # add deploy path of PaddleDetection to sys.path
 parent_path = os.path.abspath(os.path.join(__file__, *(['..'] * 2)))
@@ -81,7 +82,8 @@ class Pipeline(object):
     def __init__(self, args, cfg):
 
         # 検知時間計測用のトラッキング情報の初期化
-        self.detection_tracking_info = defaultdict(list) 
+        # self.detection_tracking_info = defaultdict(list)
+        # self.frame_info = defaultdict(list)
 
         self.multi_camera = False
         reid_cfg = cfg.get('REID', False)
@@ -204,8 +206,8 @@ class Pipeline(object):
 
 
 def get_model_dir(cfg):
-    """ 
-        Auto download inference model if the model_path is a url link. 
+    """
+        Auto download inference model if the model_path is a url link.
         Otherwise it will use the model_path directly.
     """
     for key in cfg.keys():
@@ -247,13 +249,13 @@ def get_model_dir(cfg):
 class PipePredictor(object):
     """
     Predictor in single camera
-    
-    The pipeline for image input: 
+
+    The pipeline for image input:
 
         1. Detection
         2. Detection -> Attribute
 
-    The pipeline for video input: 
+    The pipeline for video input:
 
         1. Tracking
         2. Tracking -> Attribute
@@ -264,7 +266,7 @@ class PipePredictor(object):
         args (argparse.Namespace): arguments in pipeline, which contains environment and runtime settings
         cfg (dict): config of models in pipeline
         is_video (bool): whether the input is video, default as False
-        multi_camera (bool): whether to use multi camera in pipeline, 
+        multi_camera (bool): whether to use multi camera in pipeline,
             default as False
     """
 
@@ -272,6 +274,7 @@ class PipePredictor(object):
 
         # 検知時間計測用のトラッキング情報の初期化
         self.detection_tracking_info = defaultdict(list)
+        self.frame_info = defaultdict(list)
 
         # general module for pphuman and ppvehicle
         self.with_mot = cfg.get('MOT', False)['enable'] if cfg.get(
@@ -690,9 +693,13 @@ class PipePredictor(object):
             if type(video_file) == str and "rtsp" in video_file:
                 video_out_name = video_out_name + "_t" + str(thread_idx).zfill(
                     2) + "_rtsp"
-            if not os.path.exists(self.output_dir):
-                os.makedirs(self.output_dir)
-            out_path = os.path.join(self.output_dir, video_out_name + ".mp4")
+
+            # 動画出力先設定
+            video_name = os.path.splitext(os.path.basename(video_file))[0]
+            video_output_dir = os.path.join(self.output_dir, video_name)
+            if not os.path.exists(video_output_dir):
+                os.makedirs(video_output_dir)
+            out_path = os.path.join(video_output_dir, video_out_name + ".mp4")
             fourcc = cv2.VideoWriter_fourcc(* 'mp4v')
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
@@ -738,7 +745,7 @@ class PipePredictor(object):
             scale = ShortSizeScale(short_size)
 
         object_in_region_info = {
-        }  # store info for vehicle parking in region       
+        }  # store info for vehicle parking in region
         illegal_parking_dict = None
         cars_count = 0
         retrograde_traj_len = 0
@@ -1039,7 +1046,7 @@ class PipePredictor(object):
                         frame_mot_res, max_len=frame_len)
                     retrograde_traj_len = retrograde_traj_len + 1
 
-                #the number of collected frames is enough to predict 
+                #the number of collected frames is enough to predict
                 if retrograde_traj_len == frame_len:
                     retrograde_mot_res = copy.deepcopy(
                         self.pipeline_res.get('mot'))
@@ -1114,7 +1121,14 @@ class PipePredictor(object):
             print('save result to {}'.format(out_path))
 
         # 各IDの検知時間を計算し、CSVに出力する処理
-        csv_output_path = os.path.join(self.output_dir, "detection_times.csv")
+        video_name = os.path.splitext(os.path.basename(video_file))[0]  # 動画ファイル名を取得
+        video_output_dir = os.path.join(self.output_dir, video_name)
+        # フォルダが存在しない場合は作成
+        if not os.path.exists(video_output_dir):
+            os.makedirs(video_output_dir)
+
+
+        csv_output_path = os.path.join(video_output_dir, "detection_times.csv")
         with open(csv_output_path, mode='w', newline='') as csv_file:
             fieldnames = [
                 'Detection ID',
@@ -1123,7 +1137,7 @@ class PipePredictor(object):
                 'Detection Time (seconds)',
                 'Score Min',
                 'Score Max',
-                'Score Average', 
+                'Score Average',
                 'First Frame Center X',
                 'First Frame Center Y',
                 'Last Frame Center X',
@@ -1133,7 +1147,7 @@ class PipePredictor(object):
             writer.writeheader()
             for track_id, frames in self.detection_tracking_info.items():
                 start_frame = frames[0]["frame_id"]
-                end_frame = frames[-1]["frame_id"] 
+                end_frame = frames[-1]["frame_id"]
                 start_time = round(start_frame / detection_time_calc_fps, 2)
                 end_time = round(end_frame / detection_time_calc_fps, 2)
                 detection_time = round(end_time - start_time, 2)
@@ -1157,18 +1171,86 @@ class PipePredictor(object):
                 score_average = round(sum(scores) / len(scores), 2)
 
                 writer.writerow({
-                    'Detection ID': int(track_id), 
+                    'Detection ID': int(track_id),
                     'Detection Time (start time)': start_time,
                     'Detection Time (end time)': end_time,
                     'Detection Time (seconds)': detection_time,
                     'Score Min': score_min,
                     'Score Max': score_max,
-                    'Score Average': score_average, 
+                    'Score Average': score_average,
                     'First Frame Center X': first_center_x,
                     'First Frame Center Y': first_center_y,
                     'Last Frame Center X': last_center_x,
                     'Last Frame Center Y': last_center_y
                 })
+
+        print(f'Detection times saved to {csv_output_path}')
+
+        # グローバルな video_file を使用してファイル名から開始時刻を取得
+        date_time_part = "-".join(video_name.split('-')[:2])  # 最初の2つの部分 "2024-0912_0900"
+        print("date_time_part",date_time_part)
+
+        # 日付と時刻を組み合わせて開始時刻を生成
+        start_time = datetime.datetime.strptime(date_time_part, "%Y-%m%d_%H%M")
+
+        def calculate_datetime(elapsed_seconds):
+            # 開始時刻に経過秒数を足して datetime を計算
+            current_time = start_time + datetime.timedelta(seconds=elapsed_seconds)
+            return current_time.strftime("%Y/%m/%d %H:%M:%S")
+
+
+        # 経過時間1秒ごとの検出ID数をcsv出力
+        csv_output_path = os.path.join(video_output_dir, "track_id_count.csv")
+        with open(csv_output_path, mode='w', newline='') as csv_file:
+            fieldnames = [
+                "datetime",
+                'Elapsed Seconds',
+                'Detection ID Count',
+                ]
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for frame_id, tracks in self.frame_info.items():
+                elapsed_seconds = frame_id / fps
+                # 1秒ごとキリの良いときのみデータを保存
+                if not elapsed_seconds.is_integer():
+                    continue
+                track_id_cnt = len(tracks)
+                writer.writerow({
+                    "datetime":calculate_datetime(int(elapsed_seconds)),
+                    'Elapsed Seconds': int(elapsed_seconds),
+                    'Detection ID Count': track_id_cnt,
+                })
+
+        print(f'Detection times saved to {csv_output_path}')
+
+        # 経過時間1秒ごと検出データをcsv出力
+        csv_output_path = os.path.join(video_output_dir, "time_tracking_data.csv")
+        with open(csv_output_path, mode='w', newline='') as csv_file:
+            fieldnames = [
+                "datetime",
+                'Elapsed Seconds',
+                'Detection ID',
+                'Center X',
+                'Center Y',
+                'Score',
+                ]
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for frame_id, tracks in self.frame_info.items():
+                elapsed_seconds = frame_id / fps
+                # 1秒ごとキリの良いときのみデータを保存
+                if not elapsed_seconds.is_integer():
+                    continue
+
+                for track in tracks:
+                    writer.writerow({
+                        "datetime":calculate_datetime(int(elapsed_seconds)),
+                        'Elapsed Seconds': int(elapsed_seconds),
+                        'Detection ID': int(track["track_id"]),
+                        'Center X': round(track["center"][0], 2),
+                        'Center Y': round(track["center"][1], 2),
+                        'Score': round(track["score"], 2),
+                    })
 
         print(f'Detection times saved to {csv_output_path}')
 
@@ -1185,7 +1267,7 @@ class PipePredictor(object):
                         illegal_parking_dict=None):
         image = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
         mot_res = copy.deepcopy(result.get('mot'))
-        
+
         # fpsが0の時はValueErrorとなるように変更
         if fps == 0:
             raise ValueError("Error: fps is zero. Cannot calculate detection time.")
@@ -1227,7 +1309,7 @@ class PipePredictor(object):
                 entrance=entrance,
                 records=records,
                 center_traj=center_traj)
-            
+
             # トラッキング情報の更新
             for track_id, box, score in zip(ids, boxes, scores):
                 xmin, ymin = box[0], box[1]
@@ -1285,7 +1367,7 @@ class PipePredictor(object):
                 boxes = mot_res['boxes'][:, 1:]
                 image = visualize_vehicleplate(image, plates, boxes)
                 image = np.array(image)
-        
+
             # トラッキング情報の更新
             for track_id, box, score in zip(ids, boxes, scores):
                 xmin, ymin = box[0], box[1]
@@ -1300,6 +1382,15 @@ class PipePredictor(object):
                     "center": [center_x, center_y] ,
                     "score": score
                 })
+
+                self.frame_info[frame_id].append({
+                    "track_id": track_id,
+                    "center": [center_x, center_y] ,
+                    "score": score
+                })
+                # print(track_id)
+
+
 
         kpt_res = result.get('kpt')
         if kpt_res is not None:
