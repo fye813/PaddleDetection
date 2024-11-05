@@ -89,6 +89,7 @@ kernel_meta/
 
 # input files
 /input
+/input_bk
 
 # model files
 /model
