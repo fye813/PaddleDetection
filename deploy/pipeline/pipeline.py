@@ -702,6 +702,10 @@ class PipePredictor(object):
             out_path = os.path.join(video_output_dir, video_out_name + ".mp4")
             fourcc = cv2.VideoWriter_fourcc(* 'mp4v')
             writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            if not writer.isOpened():
+                print("Failed to open VideoWriter")
+            else:
+                print("Success to open VideoWriter")
 
         frame_id = 0
 
@@ -739,6 +743,7 @@ class PipePredictor(object):
         video_fps = fps
 
         video_action_imgs = []
+        in_out_count_dict = {}
 
         if self.with_video_action:
             short_size = self.cfg["VIDEO_ACTION"]["short_size"]
@@ -808,6 +813,13 @@ class PipePredictor(object):
                     records,
                     ids2names=self.mot_predictor.pred_config.labels)
                 records = statistic['records']
+
+                # in_id_listとout_id_listの長さをフレームごとに取得
+                in_out_count_dict[frame_id] = {
+                    "Frame": frame_id,
+                    "in_count": len(in_id_list),
+                    "out_count": len(out_id_list)
+                }
 
                 if self.illegal_parking_time != -1:
                     object_in_region_info, illegal_parking_dict = update_object_info(
@@ -1193,7 +1205,7 @@ class PipePredictor(object):
         # 日付と時刻を組み合わせて開始時刻を生成
         start_time = datetime.datetime.strptime(date_time_part, "%Y-%m%d_%H%M")
 
-        def calculate_datetime(elapsed_seconds):
+        def calculate_datetime(start_time,elapsed_seconds):
             # 開始時刻に経過秒数を足して datetime を計算
             current_time = start_time + datetime.timedelta(seconds=elapsed_seconds)
             return current_time.strftime("%Y/%m/%d %H:%M:%S")
@@ -1206,6 +1218,8 @@ class PipePredictor(object):
                 "datetime",
                 'Elapsed Seconds',
                 'Detection ID Count',
+                'in count',
+                'out count',
                 ]
             writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
             writer.writeheader()
@@ -1215,10 +1229,16 @@ class PipePredictor(object):
                 if not elapsed_seconds.is_integer():
                     continue
                 track_id_cnt = len(tracks)
+
+                in_count = in_out_count_dict[frame_id]["in_count"]
+                out_count = in_out_count_dict[frame_id]["out_count"]
+
                 writer.writerow({
-                    "datetime":calculate_datetime(int(elapsed_seconds)),
+                    "datetime":calculate_datetime(start_time,int(elapsed_seconds)),
                     'Elapsed Seconds': int(elapsed_seconds),
                     'Detection ID Count': track_id_cnt,
+                    'in count': in_count,
+                    'out count': out_count,
                 })
 
         print(f'Detection times saved to {csv_output_path}')
@@ -1244,7 +1264,7 @@ class PipePredictor(object):
 
                 for track in tracks:
                     writer.writerow({
-                        "datetime":calculate_datetime(int(elapsed_seconds)),
+                        "datetime":calculate_datetime(start_time,int(elapsed_seconds)),
                         'Elapsed Seconds': int(elapsed_seconds),
                         'Detection ID': int(track["track_id"]),
                         'Center X': round(track["center"][0], 2),
