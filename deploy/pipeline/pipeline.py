@@ -710,7 +710,7 @@ class PipePredictor(object):
         print("Original FPS: {}, Adjusted FPS: {}, Frame Count: {}".format(original_fps, target_fps, frame_count))
 
         # 検知時間計測用の変数を追加
-        detection_time_calc_fps = fps
+        detection_time_calc_fps = target_fps
 
         print("video fps: %d, frame_count: %d" % (detection_time_calc_fps, frame_count))
 
@@ -719,7 +719,7 @@ class PipePredictor(object):
             pushurl = os.path.join(self.pushurl, video_out_name)
             print("the result will push stream to url:{}".format(pushurl))
             pushstream = PushStream(pushurl)
-            pushstream.initcmd(fps, width, height)
+            pushstream.initcmd(target_fps, width, height)
         elif self.cfg['visual']:
             video_out_name = 'output' if (
                 self.file_name is None or
@@ -735,7 +735,7 @@ class PipePredictor(object):
                 os.makedirs(video_output_dir)
             out_path = os.path.join(video_output_dir, video_out_name + ".mp4")
             fourcc = cv2.VideoWriter_fourcc(* 'mp4v')
-            writer = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            writer = cv2.VideoWriter(out_path, fourcc, target_fps, (width, height))
             if not writer.isOpened():
                 print("Failed to open VideoWriter")
             else:
@@ -774,7 +774,7 @@ class PipePredictor(object):
                 raise ValueError("region_type:{} unsupported.".format(
                     self.region_type))
 
-        video_fps = fps
+        video_fps = target_fps
 
         video_action_imgs = []
         in_out_count_dict = {}
@@ -791,7 +791,7 @@ class PipePredictor(object):
         framequeue = queue.Queue(10)
 
         capture_thread = threading.Thread(
-            target=self.capturevideo, args=(capture, framequeue, original_fps, fps, self.stop_event))
+            target=self.capturevideo, args=(capture, framequeue, original_fps, target_fps, self.stop_event))
         capture_thread.start()
         time.sleep(1)
 
