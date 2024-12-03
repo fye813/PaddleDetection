@@ -169,6 +169,12 @@ def argsparser():
         "--draw_center_traj",
         action='store_true',
         help="Whether drawing the trajectory of center")
+    parser.add_argument(
+        "--area_threads",
+        nargs='+',
+        type=int,
+        default=[],
+        help="Area")
 
     return parser
 
