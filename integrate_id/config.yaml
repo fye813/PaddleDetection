@@ -1,10 +1,10 @@
 settings:
   general:
     max_frame_diff: 5
-    threshold: 50.32
+    threshold: 60
     min_detection_duration: 3
 
-exclusion_areas: null
+exclusion_areas: ["職員1, 職員2, 職員3, 職員4, 職員5, 職員6"]
 # [受付, 階段]  # 例：[エリア1, エリア2]
 
 areas:
