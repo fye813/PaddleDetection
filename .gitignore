@@ -90,6 +90,7 @@ kernel_meta/
 # input files
 /input
 /input_bk
+/output_bk
 
 # model files
 /model
