@@ -296,6 +296,17 @@ def fill_missing_detections(df, max_gap=10):
 
     filled_df = filled_df.sort_values(by=['Detection ID', 'Elapsed Seconds']).reset_index(drop=True)
 
+    # datetime列が空白の部分を補完
+    reference_row = df[df['datetime'].notna()].iloc[0]
+    base_datetime = pd.to_datetime(reference_row['datetime'], errors='coerce') - pd.to_timedelta(reference_row['Elapsed Seconds'], unit='s')
+
+    filled_df['datetime'] = filled_df.apply(
+        lambda row: (base_datetime + pd.to_timedelta(row['Elapsed Seconds'], unit='s')).strftime('%Y/%m/%d %H:%M:%S')
+        if pd.isna(row['datetime']) else row['datetime'],
+        axis=1
+    )
+
+
     return filled_df
 
 
