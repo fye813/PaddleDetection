@@ -150,63 +150,23 @@ def exclude_data_by_xy_ranges(df, xy_ranges):
     masks = []
     for x_min, y_min, x_max, y_max in xy_ranges:
         mask = (
-            (df['Center X'] < x_min) | (df['Center X'] > x_max) |
-            (df['Center Y'] < y_min) | (df['Center Y'] > y_max)
+            (df['Center X'] >= x_min) & (df['Center X'] <= x_max) &
+            (df['Center Y'] >= y_min) & (df['Center Y'] <= y_max)
         )
         masks.append(mask)
 
-    # すべてのマスクを組み合わせる
-    final_mask = np.logical_and.reduce(masks)
+    # すべてのマスクを組み合わせる（すべての条件を満たす行を除外）
+    if masks:
+        final_mask = np.logical_or.reduce(masks)
+    else:
+        final_mask = np.zeros(len(df), dtype=bool)  # デフォルトですべての行を含めるマスク（すべてFalse）
 
     # マスクを適用してデータをフィルタリング
-    filtered_df = df[final_mask]
+    filtered_df = df[~final_mask]
 
-    return filtered_df
-
-def classify_by_coordinates(df, areas):
-    # 各エリアのデータを格納するリスト
-    filtered_dfs = []
-
-    for area_name, coordinates in areas.items():
-        # 'min' と 'max' を動的に処理
-        x_start = coordinates.get('x_start')
-        x_end = coordinates.get('x_end')
-        y_start = coordinates.get('y_start')
-        y_end = coordinates.get('y_end')
-
-        # 'min' の場合は float('-inf')、'max' の場合は float('inf') に置き換え
-        x_start = float('-inf') if x_start == 'min' else x_start
-        x_end = float('inf') if x_end == 'max' else x_end
-        y_start = float('-inf') if y_start == 'min' else y_start
-        y_end = float('inf') if y_end == 'max' else y_end
-
-        # 数値型でない場合のチェック
-        if not isinstance(x_start, (int, float)):
-            raise ValueError(f"Invalid value for x_start in {area_name}: {x_start}")
-        if not isinstance(x_end, (int, float)):
-            raise ValueError(f"Invalid value for x_end in {area_name}: {x_end}")
-        if not isinstance(y_start, (int, float)):
-            raise ValueError(f"Invalid value for y_start in {area_name}: {y_start}")
-        if not isinstance(y_end, (int, float)):
-            raise ValueError(f"Invalid value for y_end in {area_name}: {y_end}")
-
-        # フィルタリング条件を設定
-        condition = (
-            (df["Center X"] >= x_start) & (df["Center X"] <= x_end) &
-            (df["Center Y"] >= y_start) & (df["Center Y"] <= y_end)
-        )
-        # 各エリアに該当するデータをフィルタリングしてリストに追加
-        filtered_dfs.append(df[condition])
-
-    # リスト内のすべてのデータフレームを1つに結合して返す
-    return pd.concat(filtered_dfs, ignore_index=True).sort_values(["Elapsed Seconds", "Detection ID"])
-
-
-# 統合処理：あるIDが消失してから〇フレーム後に出現したIDの中で、いずれも一定距離内にいた場合、同一IDと見なして情報を統合する
-def merge_similar_detections(df, max_frame_diff,threshold):
-
-    print("許容フレーム差",max_frame_diff)
-    print(f"閾値",threshold)
+def merge_similar_detections(df, max_frame_diff, threshold):
+    print("許容フレーム差", max_frame_diff)
+    print(f"閾値", threshold)
 
     # データを時系列順にソート
     df = df.sort_values(by=['Elapsed Seconds', 'Detection ID']).reset_index(drop=True)
@@ -218,18 +178,15 @@ def merge_similar_detections(df, max_frame_diff,threshold):
     integrate_cnt = 0
 
     # 並列処理、tqdmを使って進捗バーを表示
-    with Pool(cpu_count()) as pool:
-        results = list(tqdm(
-            pool.imap(process_detection_id, 
-                      [(detection_id, df, max_frame_diff, threshold, integrated_ids) for detection_id in unique_ids]),
-            total=len(unique_ids), 
-            desc="Processing IDs"
-        ))
+    results = []
+    for detection_id in tqdm(unique_ids, desc="Processing IDs"):
+        if detection_id not in integrated_ids:
+            result = process_detection_id((detection_id, df, max_frame_diff, threshold, integrated_ids))
+            if result is not None:
+                results.append(result)
 
     # 統合結果を反映
     for result in results:
-        if result is None:
-            continue
         target_id = result['target_id']
         detection_id = result['detection_id']
         distance = result['distance']
@@ -242,8 +199,12 @@ def merge_similar_detections(df, max_frame_diff,threshold):
         integrated_record_id = df[df['original_ID'] == target_id]['Elapsed Seconds'].idxmin()
         df.loc[integrated_record_id, "distance"] = distance
         df.loc[integrated_record_id, "frame_diff"] = frame_diff
-    
-    print("統合回数",integrate_cnt)
+        integrate_cnt += 1
+        integrated_ids.append(target_id)  # 統合されたIDを追加
+        integrated_ids.append(detection_id)  # 統合先のIDも追加
+
+    print("統合回数", integrate_cnt)
+
     return df
 
 # 並列処理用の関数
@@ -260,7 +221,7 @@ def process_detection_id(args):
     last_position = current_id_df[['Center X', 'Center Y']].iloc[-1].values
 
     # 一定時間内に出現した他のIDを取得
-    potential_ids_df = df[df['Elapsed Seconds'] >= last_frame]
+    potential_ids_df = df[(df['Elapsed Seconds'] > last_frame) & (df['Elapsed Seconds'] <= last_frame + max_frame_diff)]
 
     for target_id in potential_ids_df['Detection ID'].unique():
         # 統合済みのIDだった場合はスキップ
@@ -280,9 +241,6 @@ def process_detection_id(args):
         # フレームの差が最大許容範囲を超える場合はスキップ
         if frame_diff > max_frame_diff: continue
 
-        # フレームの差が0以下の場合はスキップ
-        if frame_diff <= 0: continue
-
         # フレーム間の移動許容距離を計算 (フレーム数 × 1フレームあたりの平均移動距離)
         allowed_distance = frame_diff * threshold
 
@@ -292,6 +250,9 @@ def process_detection_id(args):
         if distance > allowed_distance: continue
 
         # 統合された後の更新情報を返す
+        integrated_ids.append(target_id)  # 統合対象IDをセットに追加
+        integrated_ids.append(detection_id)  # 統合先のIDもセットに追加
+
         return {
             'target_id': target_id,
             'detection_id': detection_id,
@@ -301,41 +262,42 @@ def process_detection_id(args):
 
     return None
 
-# 同一ID情報の補完：同一IDにおいて、最初に現れたフレームと最後に現れたフレームの間の欠損値を補完して、連続情報にする
-def fill_missing_detections(df):
+
+def fill_missing_detections(df, max_gap=10):
     unique_ids = df['Detection ID'].unique()
     filled_df = pd.DataFrame()
 
     for detection_id in unique_ids:
         id_df = df[df['Detection ID'] == detection_id].sort_values('Elapsed Seconds')
 
-        # 最初と最後の出現フレームを取得
+        # Get the first and last appearance frame
         first_appearance = int(id_df['Elapsed Seconds'].min())
         last_appearance = int(id_df['Elapsed Seconds'].max())
 
-        # 全体のフレーム範囲を生成
-        full_time_range = range(first_appearance, last_appearance + 1)
-        id_df = id_df.set_index('Elapsed Seconds').reindex(full_time_range)
+        # Generate the complete time range
+        full_time_range = pd.DataFrame({'Elapsed Seconds': range(first_appearance, last_appearance + 1)})
 
-        # 欠損値を補完（前のデータで補完、20フレーム間隔以上は補完しない）
-        last_valid_index = None
-        for time in full_time_range:
-            if time in id_df.index and not id_df.loc[time].isnull().all():
-                last_valid_index = time
-            elif last_valid_index is not None and time - last_valid_index <= 10:
-                id_df.loc[time] = id_df.loc[last_valid_index]
-            else:
-                id_df.loc[time] = np.nan
+        # Merge the time range with existing data to ensure all frames are present
+        id_df = pd.merge(full_time_range, id_df, how='left', on='Elapsed Seconds')
 
-        # データフレームを元に戻す
-        id_df = id_df.reset_index()
-        id_df['Detection ID'] = detection_id  # ID列を保持
+        # Fill gaps only if they are within the acceptable range (`max_gap`)
+        id_df['Gap'] = id_df['Elapsed Seconds'].diff().fillna(1)
+        id_df.loc[id_df['Gap'] > max_gap, ['Center X', 'Center Y']] = np.nan
+        id_df = id_df.drop(columns=['Gap'])
 
-        # 結果を結合
+        # Fill missing values using forward fill and backward fill for X, Y coordinates
+        id_df[['Center X', 'Center Y']] = id_df[['Center X', 'Center Y']].ffill().bfill()
+
+        # Restore the 'Detection ID' column, filling with the current detection ID
+        id_df['Detection ID'] = detection_id
+
+        # Concatenate the result
         filled_df = pd.concat([filled_df, id_df])
 
-    filled_df = filled_df.sort_values(by=['Detection ID', 'Elapsed Seconds'])
-    return filled_df.dropna(how='any')
+    filled_df = filled_df.sort_values(by=['Detection ID', 'Elapsed Seconds']).reset_index(drop=True)
+
+    return filled_df
+
 
 # クレンジング処理: 出現が短いID（数フレームしか現れないゴミデータ）を削除
 def cleanse_data(df, min_duration):
