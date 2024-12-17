@@ -59,9 +59,6 @@ def visualize_areas_with_colors(frame, csv_path, output_path, alpha=0.5):
 
         # 領域名を描画 (領域の内側、上側に沿う形で描画)
         if area_name:
-            text_size = font.getbbox(area_name)  # テキストのサイズを取得
-            text_width = text_size[2] - text_size[0]
-            text_height = text_size[3] - text_size[1]
             text_x = x_start + 5  # 領域の左端に揃える
             text_y = y_start + 5  # 領域の上端に揃える
             draw.text((text_x, text_y), area_name, fill="black", font=font)  # 黒字で描画
@@ -70,8 +67,27 @@ def visualize_areas_with_colors(frame, csv_path, output_path, alpha=0.5):
     overlay_with_text_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
     result = cv2.addWeighted(overlay, alpha, overlay_with_text_bgr, 1 - alpha, 0)
 
+    # テキスト描画（最後に直接フレームに適用、透明度なし）
+    pil_image = Image.fromarray(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_image)
+
+    for _, row in df.iterrows():
+        # 座標と領域名
+        x_start, y_start = int(row['開始x座標']), int(row['開始y座標'])
+        area_name = row['エリア名'] if 'エリア名' in row else ""
+        
+        if area_name:
+            text_x = x_start + 5
+            text_y = y_start + 5
+
+            # 黒字を最後に描画
+            draw.text((text_x, text_y), area_name, fill="black", font=font)
+
+    # 最終結果を保存
+    final_result = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+
     # 保存
-    cv2.imwrite(output_path, result)
+    cv2.imwrite(output_path, final_result)
     print(f"画像を保存しました: {output_path}")
 
 # 使用例
