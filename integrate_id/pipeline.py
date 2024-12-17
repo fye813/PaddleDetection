@@ -83,16 +83,30 @@ def main():
         print("------------------エリア付与終了------------------")
 
         print("------------------エリアごとの滞在時間出力開始------------------")
+        # エリアごとの滞在時間を算出
         area_stay_time_df = aggregate_area_stay_time(processing_area_df)
+
+        # PlaceごとのユニークなDetection ID数を表示
+        unique_detection_counts = df.groupby("Place")["Detection ID"].nunique()
+        print(unique_detection_counts)
+
         write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
         print("------------------エリアごとの滞在時間出力終了------------------")
 
-        print("------------------エリアに基づく除外処理開始------------------")
-        processing_area_df = exclude_data_by_area(processing_area_df)
-        print("------------------エリアに基づく除外処理終了------------------")
+        # Place列を指定された位置に移動（Center YとScoreの間）
+        cols = processing_area_df.columns.tolist()
+        place_index = cols.index("Center Y") + 1
+        cols.insert(place_index, cols.pop(cols.index("Place")))
+        processing_area_df = processing_area_df[cols]
 
         print("------------------秒数に基づく除外処理開始------------------")
-        processing_area_df = exclude_data_by_sec(processing_area_df, 180)
+        # IDごとの滞在時間を算出
+        processing_area_df = calc_duration(processing_area_df)
+
+        # この秒数以内のデータは除外する
+        threshold_sec = 180
+        processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
+        print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
         print("------------------秒数に基づく除外処理終了------------------")
 
         # CSVファイルへの書き出し
@@ -450,41 +464,13 @@ def aggregate_area_stay_time(df):
 
     return df
 
-# XY座標に基づいて、対象がどのエリアにいるかを判定
-def exclude_data_by_area(df):
-    # 不要なデータを削除
-    df = df[df["Place"] != "none"]
-
-    # Place列を指定された位置に移動（Center YとScoreの間）
-    cols = df.columns.tolist()
-    place_index = cols.index("Center Y") + 1
-    cols.insert(place_index, cols.pop(cols.index("Place")))
-    df = df[cols]
-
-    # PlaceごとのユニークなDetection ID数を計算
-    unique_detection_counts = df.groupby("Place")["Detection ID"].nunique()
-    print(unique_detection_counts)
-
-    return df
-
 # Detection IDごとに、対象エリア内の滞在時間がthreshold_sec未満のデータを削除
-def exclude_data_by_sec(df, threshold_sec=180):
-    """指定されたCSVファイルを処理して出力"""
-    print("閾値:", threshold_sec)
-
-    # 不要なデータを削除
-    df =  df.dropna(subset=["datetime"])
-    df = df[df["Place"] != "none"]
-
+def calc_duration(df):
     # Detection ID と datetime を基準に重複を排除
     df_unique = df.drop_duplicates(subset=["Detection ID", "datetime"])
 
     # Detection ID ごとのレコード数を Duration 列に追加
     df["Duration"] = df_unique.groupby("Detection ID")["Detection ID"].transform("count")
-
-    df = df[df["Duration"] > threshold_sec]
-
-    print("ユニークID数:",len(df["Detection ID"].unique()))
 
     return df
 
