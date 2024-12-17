@@ -3,14 +3,20 @@ import numpy as np
 import time
 import yaml
 import os
-from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+import argparse
 
 current_dir = os.path.dirname(__file__)
 
 def main():
-    input_folder_name = "output"  # 読み込むフォルダ名 人検知プログラムの結果出力先
-    target_filename = "time_tracking_data.csv"  # 使用するファイル名
+    input_folder_name = "output"
+    target_filename = "time_tracking_data.csv"
+
+    # コマンドライン引数の解析
+    parser = argparse.ArgumentParser(description="Process area_before or area_after CSV files.")
+    parser.add_argument("mode", choices=["before", "after"], help="Specify whether to use area_before or area_after")
+    args = parser.parse_args()
+    area_file_path = os.path.join(current_dir, f"area_{args.mode}.csv")
 
     # 統合設定を取得
     general_settings = load_config("general")
@@ -18,67 +24,79 @@ def main():
     threshold = general_settings['threshold']
     min_detection_duration = general_settings['min_detection_duration']
 
-    # 除外エリアの読み込み
-    exclusion_area_settings = load_config("exclusion_areas")
-    area_df = load_area_data()
-    exclusion_areas = area_df[area_df["エリア名"].isin(exclusion_area_settings)][['開始x座標', '開始y座標', '終了x座標', '終了y座標']].values.tolist() if exclusion_area_settings else None
-
-    # # 人検知プログラムの結果フォルダごとに実行
+    # # 入力フォルダとファイルのパスを設定
     input_path = os.path.join(current_dir, "..", input_folder_name)
     input_file_dirs = [os.path.join(input_path, x) for x in os.listdir(input_path) if not os.path.isfile(os.path.join(input_path, x))]
 
     for input_file_dir in input_file_dirs:
         input_file_path = os.path.join(input_file_dir, target_filename)
+        print(f"処理開始: {input_file_path}")
 
         # CSVファイルを読み込み、空行を削除
         df = pd.read_csv(input_file_path).dropna(how='all')
 
         # 列名の前後に空白がないか確認して削除
         df.columns = df.columns.str.strip()
+        total_data_points = len(df)
+        print(f"データポイントの総数: {total_data_points}")
 
         # オリジナルIDの保持
         df["original_ID"] = df["Detection ID"]
+
+        # 入力データの列の順序を保存
+        original_columns = df.columns.tolist()
 
         # 設定情報をDataFrameに保持
         df["max_frame_diff"] = max_frame_diff
         df["threshold"] = threshold
         df["min_detection_duration"] = min_detection_duration
 
-        # 除外エリアのデータを除外
-        print("jogai")
-        if exclusion_areas:
-            df = exclude_data_by_xy_ranges(df, exclusion_areas)
+        # 入力データの 'Center X' と 'Center Y' のデータ型を取得
+        center_x_dtype = df['Center X'].dtype
+        center_y_dtype = df['Center Y'].dtype
 
-        # # エリア設定を取得
-        # area_settings = load_config("areas")
-        # processing_area = area_settings['processing']
-        # no_processing_area = area_settings['no_processing']
-
-        # # DataFrameをxy座標ごとに分類
-        # processing_area_df = classify_by_coordinates(df, processing_area)
-        # no_processing_area_df = classify_by_coordinates(df, no_processing_area)
-
-        # 結合対象のDataFrameに対する結合処理----------------------------------------------------------------------------------
-        # 同一ID情報の補完：同一IDにおいて、最初に現れた時間と最後に現れた時間の間の欠損値を補完して、連続情報にする
-        # processing_area_df = fill_missing_detections(processing_area_df)
-        print("hokan")
+        print("------------------補完処理開始------------------")
         processing_area_df = fill_missing_detections(df)
+        print("------------------補完処理終了------------------")
 
-        # 統合処理：あるIDが消失してから〇秒後に出現したIDの中で、いずれも一定距離内にいた場合、同一IDと見なして情報を統合する
-        print("tougou")
-        processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff, threshold)
-
-        # クレンジング処理
-        print(f"データを有効と見なす最小の出現フレーム数",min_detection_duration)
+        print("------------------クレンジング処理開始------------------")
         processing_area_df = cleanse_data(processing_area_df, min_detection_duration)
-        # no_processing_area_df = cleanse_data(no_processing_area_df, min_detection_duration)
+        print("------------------クレンジング処理終了------------------")
 
-        # 同一人物の統合確認
-        # confirm_results(processing_area_df)
+        processing_area_df = assign_motion_flag(processing_area_df)
+        write_to_csv(processing_area_df,input_file_dir,"flagged_data")
+
+        print("------------------統合処理開始------------------")
+        processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff, threshold)
+        print("------------------統合処理終了------------------")
+
+        # 'Center X' と 'Center Y' のデータ型を元に戻す
+        processing_area_df['Center X'] = processing_area_df['Center X'].astype(center_x_dtype)
+        processing_area_df['Center Y'] = processing_area_df['Center Y'].astype(center_y_dtype)
+
+        # 列の順序を入力時と同じに並び替える
+        processing_area_df = processing_area_df[original_columns]
+
+        print("------------------エリア付与開始------------------")
+        area_settings = load_area_settings(area_file_path)
+        processing_area_df = assign_areas(processing_area_df, area_settings)
+        print("------------------エリア付与終了------------------")
+
+        print("------------------エリアごとの滞在時間出力開始------------------")
+        area_stay_time_df = aggregate_area_stay_time(processing_area_df)
+        write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
+        print("------------------エリアごとの滞在時間出力終了------------------")
+
+        print("------------------エリアに基づく除外処理開始------------------")
+        processing_area_df = exclude_data_by_area(processing_area_df)
+        print("------------------エリアに基づく除外処理終了------------------")
+
+        print("------------------秒数に基づく除外処理開始------------------")
+        processing_area_df = exclude_data_by_sec(processing_area_df, 180)
+        print("------------------秒数に基づく除外処理終了------------------")
 
         # CSVファイルへの書き出し
-        write_to_csv(processing_area_df,input_file_dir,"processing")
-        # write_to_csv(no_processing_area_df,input_file_dir,"no_processing")
+        write_to_csv(processing_area_df,input_file_dir,"excluded_data")
 
 # 設定読み込みの関数化
 def load_config(section=None):
@@ -104,10 +122,11 @@ def load_config(section=None):
         areas = config['areas']
         return general_settings, areas
 
+# area.csvファイルの読み込み
 def load_area_data():
     area_data_filename = "area.csv"
     area_data_path = os.path.join(current_dir, area_data_filename)
-    # area.csvファイルの読み込み
+
     area_df = pd.read_csv(area_data_path, usecols=['エリア名', '開始x座標', '開始y座標', '終了x座標', '終了y座標'])
 
     # 小さい方を開始座標に、大きい方を終了座標にする
@@ -116,53 +135,95 @@ def load_area_data():
 
     return area_df
 
+def classify_by_coordinates(df, areas):
+    # 各エリアのデータを格納するリスト
+    filtered_dfs = []
 
+    for area_name, coordinates in areas.items():
+        # 'min' と 'max' を動的に処理
+        x_start = coordinates.get('x_start')
+        x_end = coordinates.get('x_end')
+        y_start = coordinates.get('y_start')
+        y_end = coordinates.get('y_end')
 
-# 現在判明している同一人物情報から結果を確認する
-def confirm_results(df):
-    integrate_lists = [
-        [12,313],
-        [8,425],
-        [25,160],
-        [29,132],
-        [18,134,192],
-        [56,67],
-    ]
-    # integrate_lists = [
-    #     [25,39,80,104,107,149],
-    #     [12,120,296,346,394],
-    #     [9,219,279,443,500],
-    #     [1,534],
-    # ]
+        # 'min' の場合は float('-inf')、'max' の場合は float('inf') に置き換え
+        x_start = float('-inf') if x_start == 'min' else x_start
+        x_end = float('inf') if x_end == 'max' else x_end
+        y_start = float('-inf') if y_start == 'min' else y_start
+        y_end = float('inf') if y_end == 'max' else y_end
 
-    for integrate_list in integrate_lists:
-        print("--------------")
-        detection_ids = [df.loc[df['original_ID'] == id, 'Detection ID'].values[0] if not df.loc[df['original_ID'] == id].empty else None for id in integrate_list]
-        for i,(original_id,detection_id) in enumerate(zip(integrate_list,detection_ids)):
-            if i == 0:
-                print("base:",original_id)
-            else:
-                print(original_id,detection_id,"◯" if detection_id==integrate_list[0] else "✕")
+        # 数値型でない場合のチェック
+        if not isinstance(x_start, (int, float)):
+            raise ValueError(f"Invalid value for x_start in {area_name}: {x_start}")
+        if not isinstance(x_end, (int, float)):
+            raise ValueError(f"Invalid value for x_end in {area_name}: {x_end}")
+        if not isinstance(y_start, (int, float)):
+            raise ValueError(f"Invalid value for y_start in {area_name}: {y_start}")
+        if not isinstance(y_end, (int, float)):
+            raise ValueError(f"Invalid value for y_end in {area_name}: {y_end}")
 
-# 指定の範囲内のデータを除外する
-def exclude_data_by_xy_ranges(df, xy_ranges):
-    # 各範囲に対するマスクを作成
-    masks = []
-    for x_min, y_min, x_max, y_max in xy_ranges:
-        mask = (
-            (df['Center X'] >= x_min) & (df['Center X'] <= x_max) &
-            (df['Center Y'] >= y_min) & (df['Center Y'] <= y_max)
+        # フィルタリング条件を設定
+        condition = (
+            (df["Center X"] >= x_start) & (df["Center X"] <= x_end) &
+            (df["Center Y"] >= y_start) & (df["Center Y"] <= y_end)
         )
-        masks.append(mask)
 
-    # すべてのマスクを組み合わせる（すべての条件を満たす行を除外）
-    if masks:
-        final_mask = np.logical_or.reduce(masks)
-    else:
-        final_mask = np.zeros(len(df), dtype=bool)  # デフォルトですべての行を含めるマスク（すべてFalse）
+        # 各エリアに該当するデータをフィルタリングしてリストに追加
+        filtered_dfs.append(df[condition])
 
-    # マスクを適用してデータをフィルタリング
-    filtered_df = df[~final_mask]
+    # リスト内のすべてのデータフレームを1つに結合して返す
+    return pd.concat(filtered_dfs, ignore_index=True).sort_values(["Elapsed Seconds", "Detection ID"])
+
+
+def assign_motion_flag(df, threshold=20, future_frames=5):
+    # 時間順にソート
+    df = df.sort_values(by=['Elapsed Seconds', 'Detection ID']).reset_index(drop=True)
+
+    # 'next_5frames_center_x' と 'next_5frames_center_y' を初期化
+    df['next_5frames_center_x'] = np.nan
+    df['next_5frames_center_y'] = np.nan
+
+    # tqdmを使ってDetection ID毎の処理を進捗表示
+    for detection_id in tqdm(df['Detection ID'].unique(), desc="フラグ付与"):
+        id_df = df[df['Detection ID'] == detection_id]
+
+        # tqdmを使って各フレームに対して処理を進捗表示
+        for i, row in tqdm(id_df.iterrows(), total=id_df.shape[0], desc=f"{detection_id} - フレーム処理", leave=False):
+            # 現在のフレームのElapsed Seconds
+            current_time = row['Elapsed Seconds']
+
+            # 現在のフレームから次の5フレーム分を取得
+            future_frames_df = id_df[(id_df['Elapsed Seconds'] > current_time) &
+                                      (id_df['Elapsed Seconds'] <= current_time + future_frames)]
+
+            # 次の5フレーム分のX座標とY座標の平均を計算
+            if len(future_frames_df) > 0:
+                future_avg_x = future_frames_df['Center X'].mean()
+                future_avg_y = future_frames_df['Center Y'].mean()
+                # 平均値をnext_5frames_center_x, next_5frames_center_yに設定
+                df.loc[i, 'next_5frames_center_x'] = future_avg_x
+                df.loc[i, 'next_5frames_center_y'] = future_avg_y
+            else:
+                # 次の5フレームが不足している場合は -1 を設定
+                df.loc[i, 'next_5frames_center_x'] = -1
+                df.loc[i, 'next_5frames_center_y'] = -1
+
+            # next_5frames_center_x または next_5frames_center_y が -1 の場合は "cant judge"
+            if df.loc[i, 'next_5frames_center_x'] == -1 or df.loc[i, 'next_5frames_center_y'] == -1:
+                df.loc[i, 'motion_flag'] = 'cant judge'
+                df.loc[i, 'distance'] = -1
+            else:
+                # 現在のフレームと次の平均座標との差分を計算
+                distance = np.linalg.norm([row['Center X'] - df.loc[i, 'next_5frames_center_x'], row['Center Y'] - df.loc[i, 'next_5frames_center_y']])
+                df.loc[i, 'distance'] = distance
+
+                # 差分が閾値以下ならstayingフラグを立てる
+                if distance <= threshold:
+                    df.loc[i, 'motion_flag'] = 'staying'
+                else:
+                    df.loc[i, 'motion_flag'] = 'moving'
+
+    return df
 
 def merge_similar_detections(df, max_frame_diff, threshold):
     print("許容フレーム差", max_frame_diff)
@@ -262,65 +323,175 @@ def process_detection_id(args):
 
     return None
 
+def fill_missing_detections(df, max_gap=100):
+    # 補完後のデータを格納するリスト
+    filled_df_list = []
 
-def fill_missing_detections(df, max_gap=10):
-    unique_ids = df['Detection ID'].unique()
-    filled_df = pd.DataFrame()
+    # 総補完回数を記録
+    total_interpolated_points = 0
 
-    for detection_id in unique_ids:
-        id_df = df[df['Detection ID'] == detection_id].sort_values('Elapsed Seconds')
+    # 入力データの 'Center X' と 'Center Y' のデータ型を取得
+    center_x_dtype = df['Center X'].dtype
+    center_y_dtype = df['Center Y'].dtype
 
-        # Get the first and last appearance frame
-        first_appearance = int(id_df['Elapsed Seconds'].min())
-        last_appearance = int(id_df['Elapsed Seconds'].max())
+    # ベースのdatetimeを計算
+    min_elapsed = df['Elapsed Seconds'].min()
+    reference_row = df[df['Elapsed Seconds'] == min_elapsed].iloc[0]
+    base_datetime = pd.to_datetime(reference_row['datetime'], errors='coerce') - pd.to_timedelta(min_elapsed, unit='s')
 
-        # Generate the complete time range
-        full_time_range = pd.DataFrame({'Elapsed Seconds': range(first_appearance, last_appearance + 1)})
+    for detection_id in tqdm(df['Detection ID'].unique(), desc="補完処理中"):
+        id_df = df[df['Detection ID'] == detection_id].copy()
+        id_min_elapsed = int(id_df['Elapsed Seconds'].min())
+        id_max_elapsed = int(id_df['Elapsed Seconds'].max())
 
-        # Merge the time range with existing data to ensure all frames are present
-        id_df = pd.merge(full_time_range, id_df, how='left', on='Elapsed Seconds')
+        # Detection IDごとに存在するElapsed Secondsの範囲で再インデックス
+        id_df.set_index('Elapsed Seconds', inplace=True)
+        original_index = id_df.index.copy()  # 元のインデックスを保存
+        id_df = id_df.reindex(range(id_min_elapsed, id_max_elapsed + 1))
 
-        # Fill gaps only if they are within the acceptable range (`max_gap`)
-        id_df['Gap'] = id_df['Elapsed Seconds'].diff().fillna(1)
-        id_df.loc[id_df['Gap'] > max_gap, ['Center X', 'Center Y']] = np.nan
-        id_df = id_df.drop(columns=['Gap'])
-
-        # Fill missing values using forward fill and backward fill for X, Y coordinates
-        id_df[['Center X', 'Center Y']] = id_df[['Center X', 'Center Y']].ffill().bfill()
-
-        # Restore the 'Detection ID' column, filling with the current detection ID
+        # 'Detection ID' と 'original_ID' を設定
         id_df['Detection ID'] = detection_id
+        id_df['original_ID'] = detection_id
 
-        # Concatenate the result
-        filled_df = pd.concat([filled_df, id_df])
+        # 補完前の欠損値の数をカウント
+        nans_before_interpolation = id_df['Center X'].isna().sum()
 
-    filled_df = filled_df.sort_values(by=['Detection ID', 'Elapsed Seconds']).reset_index(drop=True)
+        # 補完したデータかどうかを示す列を追加（初期値は False）
+        id_df['is_interpolated'] = False
 
-    # datetime列が空白の部分を補完
-    reference_row = df[df['datetime'].notna()].iloc[0]
-    base_datetime = pd.to_datetime(reference_row['datetime'], errors='coerce') - pd.to_timedelta(reference_row['Elapsed Seconds'], unit='s')
+        # 欠損値を補完
+        id_df['Center X'] = id_df['Center X'].interpolate(method='linear', limit=max_gap, limit_area='inside')
+        id_df['Center Y'] = id_df['Center Y'].interpolate(method='linear', limit=max_gap, limit_area='inside')
 
-    filled_df['datetime'] = filled_df.apply(
-        lambda row: (base_datetime + pd.to_timedelta(row['Elapsed Seconds'], unit='s')).strftime('%Y/%m/%d %H:%M:%S')
-        if pd.isna(row['datetime']) else row['datetime'],
-        axis=1
-    )
+        # 補完後のインデックスを取得
+        new_index = id_df.index
 
+        # 新たに追加された行を特定（元のインデックスに無い行）
+        interpolated_rows = new_index.difference(original_index)
+
+        # 新しく補完された行に is_interpolated を True に設定
+        id_df.loc[interpolated_rows, 'is_interpolated'] = True
+
+        # 補完後の欠損値の数をカウント
+        nans_after_interpolation = id_df['Center X'].isna().sum()
+
+        # 実際に補完されたデータポイント数を計算
+        interpolated_points = nans_before_interpolation - nans_after_interpolation
+
+        # その他の列を前の行からコピー
+        id_df = id_df.ffill(limit=max_gap)
+
+        # 'Center X' と 'Center Y' を指定した小数点以下の桁数に丸める
+        id_df['Center X'] = id_df['Center X'].round(2).astype(center_x_dtype)
+        id_df['Center Y'] = id_df['Center Y'].round(2).astype(center_y_dtype)
+
+        # datetimeをElapsed Secondsから計算
+        id_df['datetime'] = id_df.index.to_series().apply(
+            lambda x: (base_datetime + pd.to_timedelta(x, unit='s')).strftime('%Y/%m/%d %H:%M:%S')
+        )
+
+        # 補完後のデータをリストに追加
+        id_df.reset_index(inplace=True)
+        filled_df_list.append(id_df)
+
+        # 総補完回数を更新
+        total_interpolated_points += interpolated_points
+
+    # リスト内のデータフレームを結合
+    filled_df = pd.concat(filled_df_list, ignore_index=True)
+
+    print(f"補完可能な時間（秒）: {max_gap}")
+    print(f"補完回数（補完したデータポイント数）: {total_interpolated_points}")
 
     return filled_df
 
-
 # クレンジング処理: 出現が短いID（数フレームしか現れないゴミデータ）を削除
 def cleanse_data(df, min_duration):
+    print(f"データを有効と見なす最小の出現フレーム数",min_duration)
+
     id_durations = df.groupby('Detection ID')['Elapsed Seconds'].nunique()
     valid_ids = id_durations[id_durations >= min_duration].index
     cleansed_df = df[df['Detection ID'].isin(valid_ids)]
+
+    print(f"除去回数（除去したデータポイント数）: {len(df) - len(cleansed_df)}")
     return cleansed_df
 
+def load_area_settings(file_path):
+    """エリア設定をCSVから読み込む"""
+    area_df = pd.read_csv(file_path)
+    area_settings = {}
+    for _, row in area_df.iterrows():
+        area_name = str(row["エリア名"])
+        area_settings[area_name] = {
+            "x_min": row["開始x座標"],
+            "x_max": row["終了x座標"],
+            "y_min": row["開始y座標"],
+            "y_max": row["終了y座標"]
+        }
+    return area_settings
+
+def assign_areas(df, area_settings):
+    # XY座標に基づいて、Place列の値を設定
+    def classify_area(x, y, settings):
+        """XY座標に基づいてエリアを分類"""
+        for area_name, bounds in settings.items():
+            if bounds["x_min"] <= x <= bounds["x_max"] and bounds["y_min"] <= y <= bounds["y_max"]:
+                return area_name
+        return "none"
+
+    # XY座標に基づいてエリアを分類
+    df["Place"] = df.apply(lambda row: classify_area(row["Center X"], row["Center Y"], area_settings), axis=1)
+
+    return df
+
+def aggregate_area_stay_time(df):
+    # Detection IDとPlaceをキーにして集約
+    df = df.groupby(["Detection ID", "Place"]).size().reset_index(name="Area Stay Time")
+
+    return df
+
+# XY座標に基づいて、対象がどのエリアにいるかを判定
+def exclude_data_by_area(df):
+    # 不要なデータを削除
+    df = df[df["Place"] != "none"]
+
+    # Place列を指定された位置に移動（Center YとScoreの間）
+    cols = df.columns.tolist()
+    place_index = cols.index("Center Y") + 1
+    cols.insert(place_index, cols.pop(cols.index("Place")))
+    df = df[cols]
+
+    # PlaceごとのユニークなDetection ID数を計算
+    unique_detection_counts = df.groupby("Place")["Detection ID"].nunique()
+    print(unique_detection_counts)
+
+    return df
+
+# Detection IDごとに、対象エリア内の滞在時間がthreshold_sec未満のデータを削除
+def exclude_data_by_sec(df, threshold_sec=180):
+    """指定されたCSVファイルを処理して出力"""
+    print("閾値:", threshold_sec)
+
+    # 不要なデータを削除
+    df =  df.dropna(subset=["datetime"])
+    df = df[df["Place"] != "none"]
+
+    # Detection ID と datetime を基準に重複を排除
+    df_unique = df.drop_duplicates(subset=["Detection ID", "datetime"])
+
+    # Detection ID ごとのレコード数を Duration 列に追加
+    df["Duration"] = df_unique.groupby("Detection ID")["Detection ID"].transform("count")
+
+    df = df[df["Duration"] > threshold_sec]
+
+    print("ユニークID数:",len(df["Detection ID"].unique()))
+
+    return df
+
+# 加工結果を新しいCSVファイルに出力
 def write_to_csv(df, output_dir, filename):
-    # 加工結果を新しいCSVファイルに出力
-    vis_path = os.path.join(output_dir,f"{filename}.csv")
-    df.to_csv(vis_path, index=False)
+    vis_path = os.path.join(output_dir, f"{filename}.csv")
+    df.to_csv(vis_path, index=False, encoding="utf-8-sig")
 
 if __name__ == "__main__":
     main()
