@@ -80,24 +80,15 @@ def main():
         print("------------------エリア付与開始------------------")
         area_settings = load_area_settings(area_file_path)
         processing_area_df = assign_areas(processing_area_df, area_settings)
-        print("------------------エリア付与終了------------------")
-
-        print("------------------エリアごとの滞在時間出力開始------------------")
-        # エリアごとの滞在時間を算出
-        area_stay_time_df = aggregate_area_stay_time(processing_area_df)
-
-        # PlaceごとのユニークなDetection ID数を表示
-        unique_detection_counts = df.groupby("Place")["Detection ID"].nunique()
-        print(unique_detection_counts)
-
-        write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
-        print("------------------エリアごとの滞在時間出力終了------------------")
 
         # Place列を指定された位置に移動（Center YとScoreの間）
         cols = processing_area_df.columns.tolist()
         place_index = cols.index("Center Y") + 1
         cols.insert(place_index, cols.pop(cols.index("Place")))
         processing_area_df = processing_area_df[cols]
+        print("------------------エリア付与終了------------------")
+
+
 
         print("------------------秒数に基づく除外処理開始------------------")
         # IDごとの滞在時間を算出
@@ -111,6 +102,20 @@ def main():
 
         # CSVファイルへの書き出し
         write_to_csv(processing_area_df,input_file_dir,"excluded_data")
+
+        print("------------------エリアごとの滞在時間出力開始------------------")
+        # エリアごとの滞在時間を算出
+        area_stay_time_df = aggregate_area_stay_time(processing_area_df)
+
+        # PlaceごとのユニークなDetection ID数を表示
+        unique_detection_counts = area_stay_time_df.groupby("Place")["Detection ID"].nunique()
+        print("PlaceごとのユニークなDetection ID数:",unique_detection_counts)
+        print("ユニークID数:",len(area_stay_time_df["Detection ID"].unique()))
+        print("------------------エリアごとの滞在時間出力終了------------------")
+
+        # CSVファイルへの書き出し
+        write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
+
 
 # 設定読み込みの関数化
 def load_config(section=None):
