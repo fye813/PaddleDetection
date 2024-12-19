@@ -7,6 +7,7 @@ from tqdm import tqdm
 import argparse
 
 current_dir = os.path.dirname(__file__)
+tqdm.pandas()
 
 def main():
     input_folder_name = "output"
@@ -204,54 +205,27 @@ def classify_by_coordinates(df, areas):
     # リスト内のすべてのデータフレームを1つに結合して返す
     return pd.concat(filtered_dfs, ignore_index=True).sort_values(["Elapsed Seconds", "Detection ID"])
 
-
 def assign_motion_flag(df, threshold=20, future_frames=5):
-    # 時間順にソート
-    df = df.sort_values(by=['Elapsed Seconds', 'Detection ID']).reset_index(drop=True)
+    def calculate_by_id(group):
+        group = group.sort_values('Elapsed Seconds').reset_index(drop=True)
+        group['Next Avg X'] = group['Center X'].rolling(window=5, min_periods=1).mean().shift(-(future_frames-1))
+        group['Next Avg Y'] = group['Center Y'].rolling(window=5, min_periods=1).mean().shift(-(future_frames-1))
 
-    # 'next_5frames_center_x' と 'next_5frames_center_y' を初期化
-    df['next_5frames_center_x'] = np.nan
-    df['next_5frames_center_y'] = np.nan
+        # 距離計算
+        group['Distance'] = np.sqrt((group['Next Avg X'] - group['Center X'])**2 + (group['Next Avg Y'] - group['Center Y'])**2)
 
-    # tqdmを使ってDetection ID毎の処理を進捗表示
-    for detection_id in tqdm(df['Detection ID'].unique(), desc="フラグ付与"):
-        id_df = df[df['Detection ID'] == detection_id]
-        prev_motion = ""
+        # motion_flag 計算
+        group['motion_flag'] = group['Distance'].apply(lambda d: 'moving' if d >= threshold else 'staying')
 
-        # tqdmを使って各フレームに対して処理を進捗表示
-        for i, row in tqdm(id_df.iterrows(), total=id_df.shape[0], desc=f"{detection_id} - フレーム処理", leave=False):
-            # 現在のフレームのElapsed Seconds
-            current_time = row['Elapsed Seconds']
+        # 次の5秒間が取れない場合は一つ前の motion_flag を使用
+        for i in range(1, len(group)):
+            if pd.isna(group.loc[i, 'Distance']):
+                group.loc[i, 'motion_flag'] = group.loc[i - 1, 'motion_flag']
 
-            # 現在のフレームから次の5フレーム分を取得
-            future_frames_df = id_df[(id_df['Elapsed Seconds'] > current_time) &
-                                      (id_df['Elapsed Seconds'] <= current_time + future_frames)]
+        return group.drop(columns=['Next Avg X', 'Next Avg Y', 'Distance'])
 
-            # 次の5フレーム分のX座標とY座標の平均を計算
-            if len(future_frames_df) > 0:
-                future_avg_x = future_frames_df['Center X'].mean()
-                future_avg_y = future_frames_df['Center Y'].mean()
-                # 平均値をnext_5frames_center_x, next_5frames_center_yに設定
-                df.loc[i, 'next_5frames_center_x'] = future_avg_x
-                df.loc[i, 'next_5frames_center_y'] = future_avg_y
-            else:
-                # 次の5フレームが不足している場合は -1 を設定
-                df.loc[i, 'next_5frames_center_x'] = -1
-                df.loc[i, 'next_5frames_center_y'] = -1
-
-            # next_5frames_center_x または next_5frames_center_y が -1 の場合は "cant judge"
-            if df.loc[i, 'next_5frames_center_x'] != -1 or df.loc[i, 'next_5frames_center_y'] != -1:
-                # 現在のフレームと次の平均座標との差分を計算
-                distance = np.linalg.norm([row['Center X'] - df.loc[i, 'next_5frames_center_x'], row['Center Y'] - df.loc[i, 'next_5frames_center_y']])
-                df.loc[i, 'distance'] = distance
-
-                # 差分が閾値以下ならstayingフラグを立てる
-                motion = 'staying' if distance <= threshold else 'moving'
-                df.loc[i, 'motion_flag'] = motion
-                prev_motion = motion
-            else:
-                df.loc[i, 'motion_flag'] = prev_motion
-                df.loc[i, 'distance'] = -1
+    # 各 Detection ID ごとに処理
+    df = df.groupby('Detection ID', group_keys=False).progress_apply(calculate_by_id)
 
     return df
 
@@ -307,7 +281,6 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 (~df['Detection ID'].isin(integrated_ids)) &  # 統合済みIDを除外
                 (df['Detection ID'] != detection_id)  # 自分自身を除外
             ]
-
 
             return potential_ids_df,last_frame,last_position,max_frame_diff,allowed_distance_by_frame
 
