@@ -63,8 +63,8 @@ def main():
         processing_area_df = cleanse_data(processing_area_df, min_detection_duration)
         print("------------------クレンジング処理終了------------------")
 
-        processing_area_df = assign_motion_flag(processing_area_df)
-        write_to_csv(processing_area_df,input_file_dir,"flagged_data")
+        # processing_area_df = assign_motion_flag(processing_area_df)
+        # write_to_csv(processing_area_df,input_file_dir,"flagged_data")
 
         print("------------------統合処理開始------------------")
         processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff, threshold)
@@ -473,7 +473,7 @@ def aggregate_area_stay_time(df):
     area_stay_time_df.columns = ['Detection ID', 'Place', 'Start Time', 'End Time']
     # 滞在時間を計算
     area_stay_time_df['Area Stay Time'] = (area_stay_time_df['End Time'] - area_stay_time_df['Start Time']).dt.total_seconds()
-    area_stay_time_df = area_stay_time_df.sort_values('Start Time').sort_values('Detection ID')
+    area_stay_time_df = area_stay_time_df.sort_values(["Detection ID",'Start Time'])
 
     return area_stay_time_df
 
