@@ -88,8 +88,6 @@ def main():
         processing_area_df = processing_area_df[cols]
         print("------------------エリア付与終了------------------")
 
-
-
         print("------------------秒数に基づく除外処理開始------------------")
         # IDごとの滞在時間を算出
         processing_area_df = calc_duration(processing_area_df)
@@ -464,10 +462,20 @@ def assign_areas(df, area_settings):
     return df
 
 def aggregate_area_stay_time(df):
-    # Detection IDとPlaceをキーにして集約
-    df = df.groupby(["Detection ID", "Place"]).size().reset_index(name="Area Stay Time")
+    # datetimeカラムをdatetime型に変換
+    df['datetime'] = pd.to_datetime(df['datetime'])
+    # Detection IDとPlaceごとの最初と最後の時間を取得
+    area_stay_time_df = df.groupby(['Detection ID', 'Place']).agg({
+        'datetime': ['min', 'max']
+    }).reset_index()
 
-    return df
+    # カラム名を分かりやすく変更
+    area_stay_time_df.columns = ['Detection ID', 'Place', 'Start Time', 'End Time']
+    # 滞在時間を計算
+    area_stay_time_df['Area Stay Time'] = (area_stay_time_df['End Time'] - area_stay_time_df['Start Time']).dt.total_seconds()
+    area_stay_time_df = area_stay_time_df.sort_values('Start Time').sort_values('Detection ID')
+
+    return area_stay_time_df
 
 # Detection IDごとに、対象エリア内の滞在時間がthreshold_sec未満のデータを削除
 def calc_duration(df):
