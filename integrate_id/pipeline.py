@@ -39,7 +39,7 @@ def main():
 
         # データ絞り込み 改修終わったら削除
         df = df[df["datetime"]>="2024/11/27 10:45:42"][df["datetime"]<="2024/11/27 11:40:14"]
-        df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
+        # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
         # 列名の前後に空白がないか確認して削除
         df.columns = df.columns.str.strip()
@@ -63,16 +63,15 @@ def main():
         center_x_dtype = df['Center X'].dtype
         center_y_dtype = df['Center Y'].dtype
 
-
         print("------------------補完処理開始------------------")
         processing_area_df = fill_missing_detections(df)
         print("------------------補完処理終了------------------")
-        print(processing_area_df.groupby("Detection ID").size())
+        print("ID数",processing_area_df["Detection ID"].nunique())
 
         print("------------------クレンジング処理開始------------------")
         processing_area_df = cleanse_data(processing_area_df, min_detection_duration)
         print("------------------クレンジング処理終了------------------")
-        print(processing_area_df.groupby("Detection ID").size())
+        print("ID数",processing_area_df["Detection ID"].nunique())
 
         # 動いているか止まっているかを判定
         processing_area_df = assign_motion_flag(processing_area_df)
@@ -81,7 +80,7 @@ def main():
         print("------------------統合処理開始------------------")
         processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary)
         print("------------------統合処理終了------------------")
-        print(processing_area_df.groupby("Detection ID").size())
+        print("ID数",processing_area_df["Detection ID"].nunique())
 
         # 'Center X' と 'Center Y' のデータ型を元に戻す
         processing_area_df['Center X'] = processing_area_df['Center X'].astype(center_x_dtype)
@@ -100,7 +99,7 @@ def main():
         cols.insert(place_index, cols.pop(cols.index("Place")))
         processing_area_df = processing_area_df[cols]
         print("------------------エリア付与終了------------------")
-        print(processing_area_df.groupby("Detection ID").size())
+        print("ID数",processing_area_df["Detection ID"].nunique())
 
         # print("------------------秒数に基づく除外処理開始------------------")
         # # IDごとの滞在時間を算出
@@ -252,7 +251,6 @@ def assign_motion_flag(df, threshold=20, future_frames=5):
                 prev_motion = motion
             else:
                 df.loc[i, 'motion_flag'] = prev_motion
-                print('motion_flag',prev_motion)
                 df.loc[i, 'distance'] = -1
 
     return df
@@ -273,80 +271,109 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
 
     # tqdmを使用して進捗率を表示
     for detection_id in tqdm(unique_ids, desc="統合処理中"):
-        print("detection_id",detection_id)
+        # print("detection_id",detection_id)
         if detection_id in integrated_ids:
-            print("continue1")
+            # print("continue1")
             continue
 
         current_id_df = df[df['Detection ID'] == detection_id]
         if current_id_df.empty:
-            print("continue2")
+            # print("continue2")
             continue
 
-        last_frame = current_id_df['Elapsed Seconds'].max()
-        last_position = current_id_df[current_id_df['Elapsed Seconds'] == last_frame][['Center X', 'Center Y']].iloc[0].values
+        def get_potential_ids_info(current_id_df):
+            last_frame = current_id_df['Elapsed Seconds'].max()
+            last_position = current_id_df[current_id_df['Elapsed Seconds'] == last_frame][['Center X', 'Center Y']].iloc[0].values
 
-        # 統合元IDが最後に動いているかどうか確認
-        target_motion_flag = current_id_df["motion_flag"].iloc[-1]
-        if target_motion_flag == "moving":
-            max_frame_diff = max_frame_diff_moving
-            allowed_distance_by_frame = threshold_moving
-        elif target_motion_flag == "staying":
-            max_frame_diff = max_frame_diff_stationary
-            allowed_distance_by_frame = threshold_stationary
-        else:
-            print("continue3")
+            # 統合元IDが最後に動いているかどうか確認
+            target_motion_flag = current_id_df["motion_flag"].iloc[-1]
+            if target_motion_flag == "moving":
+                max_frame_diff = max_frame_diff_moving
+                allowed_distance_by_frame = threshold_moving
+            elif target_motion_flag == "staying":
+                max_frame_diff = max_frame_diff_stationary
+                allowed_distance_by_frame = threshold_stationary
+            else:
+                # print("continue3")
+                return None
+
+            # 統合候補となるデータを抽出
+            allowed_frame_diff = last_frame - 5
+            potential_ids_df = df[
+                (df['Detection ID'] > detection_id) &  # 後に出てきたID
+                (df['Elapsed Seconds'] > allowed_frame_diff) &  # 許容されるフレーム差より後
+                (df['Elapsed Seconds'] <= last_frame + max_frame_diff) &  # 許容されるフレーム差以内
+                (df['motion_flag'] == target_motion_flag) &  # 同じmotion_flag
+                (~df['Detection ID'].isin(integrated_ids)) &  # 統合済みIDを除外
+                (df['Detection ID'] != detection_id)  # 自分自身を除外
+            ]
+
+
+            return potential_ids_df,last_frame,last_position,max_frame_diff,allowed_distance_by_frame
+
+        potential_ids_df,last_frame,last_position,max_frame_diff,allowed_distance_by_frame = get_potential_ids_info(current_id_df)
+
+        # 統合候補がなければスキップ
+        if potential_ids_df.shape[0] == 0:
+            # print("continue3.5")
             continue
 
-        # 統合候補となるデータを抽出
-        allowed_frame_diff = last_frame - 5
-        potential_ids_df = df[(df['Elapsed Seconds'] > allowed_frame_diff) & (df['Elapsed Seconds'] <= last_frame + max_frame_diff)]
+        while True:
+            integrate_cnt_in_a_loop = 0
 
-        # 統合元と同じmotion_flagのデータのみ対象
-        potential_ids_df = potential_ids_df[potential_ids_df["motion_flag"]==target_motion_flag]
+            # 統合候補をIDごとに検証
+            for target_id in potential_ids_df['Detection ID'].dropna().unique():
+                # print("target_id",target_id)
+                target_id_df = df[df['Detection ID'] == target_id]
+                if target_id_df.empty:
+                    # print("continue4")
+                    continue
 
-        potential_ids_df = potential_ids_df[~potential_ids_df['Detection ID'].isin(integrated_ids)]
-        potential_ids_df = potential_ids_df[potential_ids_df['Detection ID'] != detection_id]
+                # 統合元IDの最後と統合先IDの最初のフレームを取得 max_frame_diffより大きければID統合しない
+                target_id_first_frame = target_id_df['Elapsed Seconds'].min()
+                first_position_target_id = target_id_df[target_id_df['Elapsed Seconds'] == target_id_first_frame][['Center X', 'Center Y']].iloc[0].values
+                frame_diff = max(target_id_first_frame - last_frame, 1)
+                if frame_diff > max_frame_diff:
+                    # print("continue5")
+                    continue
 
-        # 統合候補をIDごとに検証
-        for target_id in potential_ids_df['Detection ID'].dropna().unique():
-            print("target_id",target_id)
-            target_id_df = df[df['Detection ID'] == target_id]
-            if target_id_df.empty:
-                print("continue4")
-                continue
+                # フレーム差×allowed_distance_by_frameを許容距離とし、これ以上離れているものはID統合しない
+                allowed_distance = frame_diff * allowed_distance_by_frame
+                distance = np.linalg.norm(last_position - first_position_target_id)
+                if distance > allowed_distance:
+                    # print("frame_diff",frame_diff)
+                    # print("allowed_distance_by_frame",allowed_distance_by_frame)
+                    # print("allowed_distance",allowed_distance)
+                    # print("distance",distance)
+                    # print("continue6")
+                    continue
 
-            # 統合元IDの最後と統合先IDの最初のフレームを取得 max_frame_diffより大きければID統合しない
-            target_id_first_frame = target_id_df['Elapsed Seconds'].min()
-            first_position_target_id = target_id_df[target_id_df['Elapsed Seconds'] == target_id_first_frame][['Center X', 'Center Y']].iloc[0].values
-            frame_diff = max(target_id_first_frame - last_frame, 1)
-            if frame_diff > max_frame_diff:
-                print("continue5")
-                continue
+                # 統合処理
+                df.loc[df['Detection ID'] == target_id, 'Detection ID'] = detection_id
+                if 'distance' not in df.columns:
+                    df['distance'] = np.nan
+                    df['frame_diff'] = np.nan
 
-            # フレーム差×allowed_distance_by_frameを許容距離とし、これ以上離れているものはID統合しない
-            allowed_distance = frame_diff * allowed_distance_by_frame
-            distance = np.linalg.norm(last_position - first_position_target_id)
-            print("frame_diff",frame_diff)
-            print("allowed_distance_by_frame",allowed_distance_by_frame)
-            print("allowed_distance",allowed_distance)
-            print("distance",distance)
-            if distance > allowed_distance:
-                print("continue6")
-                continue
+                integrated_record_id = df[df['original_ID'] == target_id]['Elapsed Seconds'].idxmin()
+                df.loc[integrated_record_id, "distance"] = distance
+                df.loc[integrated_record_id, "frame_diff"] = frame_diff
+                integrate_cnt += 1
+                integrate_cnt_in_a_loop += 1
+                integrated_ids.add(target_id)
+                if detection_id == 51030:
+                    print(target_id)
+                    print("integrated")
 
-            # 統合処理
-            df.loc[df['Detection ID'] == target_id, 'Detection ID'] = detection_id
-            if 'distance' not in df.columns:
-                df['distance'] = np.nan
-                df['frame_diff'] = np.nan
+                # 情報を更新
+                potential_ids_df,last_frame,last_position,max_frame_diff,allowed_distance_by_frame = get_potential_ids_info(df[df['Detection ID'] == detection_id])
 
-            integrated_record_id = df[df['original_ID'] == target_id]['Elapsed Seconds'].idxmin()
-            df.loc[integrated_record_id, "distance"] = distance
-            df.loc[integrated_record_id, "frame_diff"] = frame_diff
-            integrate_cnt += 1
-            integrated_ids.add(target_id)
-            print("integrated")
+            if potential_ids_df.shape[0] == 0:
+                # print("continue3.6")
+                break
+
+            if integrate_cnt_in_a_loop == 0:
+                break
+
 
     print("統合回数:", integrate_cnt)
 
@@ -495,4 +522,7 @@ def write_to_csv(df, output_dir, filename):
     df.to_csv(vis_path, index=False, encoding="utf-8-sig")
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    end_time = time.time()
+    print(f"処理時間: {end_time - start_time:.2f}秒")
