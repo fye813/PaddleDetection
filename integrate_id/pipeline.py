@@ -462,18 +462,8 @@ def assign_areas(df, area_settings):
     return df
 
 def aggregate_area_stay_time(df):
-    # datetimeカラムをdatetime型に変換
-    df['datetime'] = pd.to_datetime(df['datetime'])
-    # Detection IDとPlaceごとの最初と最後の時間を取得
-    area_stay_time_df = df.groupby(['Detection ID', 'Place']).agg({
-        'datetime': ['min', 'max']
-    }).reset_index()
-
-    # カラム名を分かりやすく変更
-    area_stay_time_df.columns = ['Detection ID', 'Place', 'Start Time', 'End Time']
-    # 滞在時間を計算
-    area_stay_time_df['Area Stay Time'] = (area_stay_time_df['End Time'] - area_stay_time_df['Start Time']).dt.total_seconds()
-    area_stay_time_df = area_stay_time_df.sort_values(["Detection ID",'Start Time'])
+    # Detection IDとPlaceをキーにして集約
+    area_stay_time_df = df.groupby(["Detection ID", "Place"]).size().reset_index(name="Area Stay Time")
 
     return area_stay_time_df
 
