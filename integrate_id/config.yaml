@@ -2,7 +2,7 @@ settings:
   general:
     max_frame_diff_moving: 5
     threshold_moving: 60
-    max_frame_diff_stationary: 20
+    max_frame_diff_stationary: 5
     threshold_stationary: 80
     min_detection_duration: 3
 
