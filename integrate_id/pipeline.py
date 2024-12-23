@@ -40,7 +40,7 @@ def main():
 
         # データ絞り込み 改修終わったら削除
         # df = df[df["datetime"]>="2024/11/27 10:45:42"][df["datetime"]<="2024/11/27 11:40:14"]
-        # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
+        df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
         # 列名の前後に空白がないか確認して削除
         df.columns = df.columns.str.strip()
@@ -360,6 +360,8 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
             if integrate_cnt_in_a_loop == 0:
                 break
 
+    # Elapsed SecondsとDetection IDの重複を削除し、Original_IDが小さい方を残す
+    df = df.sort_values('original_ID').drop_duplicates(['Elapsed Seconds', 'Detection ID'], keep='first')
 
     print("統合回数:", integrate_cnt)
 
