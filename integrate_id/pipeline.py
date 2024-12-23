@@ -39,8 +39,9 @@ def main():
         df = pd.read_csv(input_file_path).dropna(how='all')
 
         # データ絞り込み 改修終わったら削除
-        # df = df[df["datetime"]>="2024/11/27 10:45:42"][df["datetime"]<="2024/11/27 11:40:14"]
-        df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
+        df = df[df["datetime"]<="2024/11/27 08:19:08"]
+        # df = df[df["datetime"]>="2024/11/27 08:09:44"][df["datetime"]<="2024/11/27 08:19:08"]
+        # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
         # 列名の前後に空白がないか確認して削除
         df.columns = df.columns.str.strip()
@@ -74,11 +75,11 @@ def main():
         print("------------------補完処理終了------------------")
         print("ID数",processing_area_df["Detection ID"].nunique())
 
+        print("------------------統合処理開始------------------")
         # 動いているか止まっているかを判定
         processing_area_df = assign_motion_flag(processing_area_df)
         write_to_csv(processing_area_df,input_file_dir,"flagged_data")
 
-        print("------------------統合処理開始------------------")
         processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary)
         print("------------------統合処理終了------------------")
         print("ID数",processing_area_df["Detection ID"].nunique())
@@ -88,7 +89,7 @@ def main():
         processing_area_df['Center Y'] = processing_area_df['Center Y'].astype(center_y_dtype)
 
         # 列の順序を入力時と同じに並び替える
-        processing_area_df = processing_area_df[original_columns]
+        processing_area_df = processing_area_df[original_columns+["motion_flag"]]
 
         print("------------------エリア付与開始------------------")
         area_settings = load_area_settings(area_file_path)
@@ -107,10 +108,10 @@ def main():
         processing_area_df = calc_duration(processing_area_df)
 
         # # この秒数以内のデータは除外する
-        threshold_sec = 180
-        processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
-        # Duration列を削除
-        processing_area_df = processing_area_df.drop(columns=["Duration"])
+        # threshold_sec = 180
+        # processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
+        # # Duration列を削除
+        # processing_area_df = processing_area_df.drop(columns=["Duration"])
         print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
         print("------------------秒数に基づく除外処理終了------------------")
 
@@ -229,6 +230,14 @@ def assign_motion_flag(df, threshold=20, future_frames=5):
     # 各 Detection ID ごとに処理
     df = df.groupby('Detection ID', group_keys=False).progress_apply(calculate_by_id)
 
+    # 各Detection IDごとに最初と最後のmotion_flagを取得
+    first_flags = df.groupby('Detection ID')['motion_flag'].first()
+    last_flags = df.groupby('Detection ID')['motion_flag'].last()
+
+    # 新しい列を追加
+    df['first_motion_flag'] = df['Detection ID'].map(first_flags)
+    df['last_motion_flag'] = df['Detection ID'].map(last_flags)
+
     return df
 
 def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary):
@@ -266,7 +275,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
             df['First Elapsed Seconds'] = df.groupby('Detection ID')['Elapsed Seconds'].transform('min')
 
             # 統合元IDが最後に動いているかどうか確認
-            target_motion_flag = current_id_df["motion_flag"].iloc[-1]
+            target_motion_flag = current_id_df["last_motion_flag"].iloc[-1]
             if target_motion_flag == "moving":
                 max_backward_frame_diff = 5
                 max_forward_frame_diff = max_frame_diff_moving
@@ -285,7 +294,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 (df['Detection ID'] > detection_id) &  # 後に出てきたID
                 (df['First Elapsed Seconds'] > allowed_frame_diff) &  # 許容されるフレーム差より後
                 (df['First Elapsed Seconds'] <= last_frame + max_forward_frame_diff) &  # 許容されるフレーム差以内
-                (df['motion_flag'] == target_motion_flag) &  # 同じmotion_flag
+                (df['first_motion_flag'] == target_motion_flag) &  # 同じmotion_flag
                 (~df['Detection ID'].isin(integrated_ids)) &  # 統合済みIDを除外
                 (df['Detection ID'] != detection_id)  # 自分自身を除外
             ]
@@ -350,7 +359,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                     print("integrated")
 
                 # 情報を更新
-                df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame = get_potential_ids_info(df,df[df['Detection ID'] == detection_id])
+                df, potential_ids_df, last_frame, last_position, target_motion_flag, max_forward_frame_diff, allowed_distance_by_frame = get_potential_ids_info(df,df[df['Detection ID'] == detection_id])
 
             if potential_ids_df.shape[0] == 0:
                 # print("continue3.6")
@@ -361,7 +370,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 break
 
     # Elapsed SecondsとDetection IDの重複を削除し、Original_IDが小さい方を残す
-    df = df.sort_values('original_ID').drop_duplicates(['Elapsed Seconds', 'Detection ID'], keep='first')
+    # df = df.sort_values('original_ID').drop_duplicates(['Elapsed Seconds', 'Detection ID'], keep='first')
 
     print("統合回数:", integrate_cnt)
 
