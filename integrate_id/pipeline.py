@@ -39,7 +39,7 @@ def main():
         df = pd.read_csv(input_file_path).dropna(how='all')
 
         # データ絞り込み 改修終わったら削除
-        df = df[df["datetime"]>="2024/11/27 10:45:42"][df["datetime"]<="2024/11/27 11:40:14"]
+        # df = df[df["datetime"]>="2024/11/27 10:45:42"][df["datetime"]<="2024/11/27 11:40:14"]
         # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
         # 列名の前後に空白がないか確認して削除
@@ -102,15 +102,17 @@ def main():
         print("------------------エリア付与終了------------------")
         print("ID数",processing_area_df["Detection ID"].nunique())
 
-        # print("------------------秒数に基づく除外処理開始------------------")
-        # # IDごとの滞在時間を算出
-        # processing_area_df = calc_duration(processing_area_df)
+        print("------------------秒数に基づく除外処理開始------------------")
+        # IDごとの滞在時間を算出
+        processing_area_df = calc_duration(processing_area_df)
 
         # # この秒数以内のデータは除外する
-        # threshold_sec = 180
-        # processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
-        # print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
-        # print("------------------秒数に基づく除外処理終了------------------")
+        threshold_sec = 180
+        processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
+        # Duration列を削除
+        processing_area_df = processing_area_df.drop(columns=["Duration"])
+        print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
+        print("------------------秒数に基づく除外処理終了------------------")
 
         # CSVファイルへの書き出し
         write_to_csv(processing_area_df,input_file_dir,"excluded_data")
@@ -270,7 +272,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 max_forward_frame_diff = max_frame_diff_moving
                 allowed_distance_by_frame = threshold_moving
             elif target_motion_flag == "staying":
-                max_backward_frame_diff = 40
+                max_backward_frame_diff = 300
                 max_forward_frame_diff = max_frame_diff_stationary
                 allowed_distance_by_frame = threshold_stationary
             else:
@@ -291,7 +293,6 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
             return df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame
 
         df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame = get_potential_ids_info(df,current_id_df)
-        if detection_id == 35833:print("a",potential_ids_df[potential_ids_df["Detection ID"]==35916].shape[0])
 
         # 統合候補がなければスキップ
         if potential_ids_df.shape[0] == 0:
@@ -320,10 +321,6 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 # フレーム差×allowed_distance_by_frameを許容距離とし、これ以上離れているものはID統合しない
                 allowed_distance = frame_diff * allowed_distance_by_frame if target_motion_flag == "moving" else allowed_distance_by_frame
                 distance = np.linalg.norm(last_position - first_position_target_id)
-                # if detection_id == 35833:
-                #     print(target_id)
-                #     print(allowed_distance)
-                #     print(distance)
                 if distance > allowed_distance:
                     # print("frame_diff",frame_diff)
                     # print("allowed_distance_by_frame",allowed_distance_by_frame)
