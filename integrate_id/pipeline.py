@@ -39,7 +39,7 @@ def main():
         df = pd.read_csv(input_file_path).dropna(how='all')
 
         # データ絞り込み 改修終わったら削除
-        df = df[df["datetime"]<="2024/11/27 08:19:08"]
+        # df = df[df["datetime"]<="2024/11/27 08:19:08"]
         # df = df[df["datetime"]>="2024/11/27 08:09:44"][df["datetime"]<="2024/11/27 08:19:08"]
         # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
@@ -254,6 +254,39 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
     integrated_ids = set()
     integrate_cnt = 0
 
+    def get_potential_ids_info(df,current_id_df):
+        last_frame = current_id_df['Elapsed Seconds'].max()
+        last_position = current_id_df[current_id_df['Elapsed Seconds'] == last_frame][['Center X', 'Center Y']].iloc[0].values
+        df['First Elapsed Seconds'] = df.groupby('Detection ID')['Elapsed Seconds'].transform('min')
+
+        # 統合元IDが最後に動いているかどうか確認
+        target_motion_flag = current_id_df["last_motion_flag"].iloc[-1]
+        if target_motion_flag == "moving":
+            max_backward_frame_diff = 5
+            max_forward_frame_diff = max_frame_diff_moving
+            allowed_distance_by_frame = threshold_moving
+        elif target_motion_flag == "staying":
+            max_backward_frame_diff = 300
+            max_forward_frame_diff = max_frame_diff_stationary
+            allowed_distance_by_frame = threshold_stationary
+        else:
+            # print("continue3")
+            return None
+
+        # 統合候補となるデータを抽出
+        allowed_frame_diff = last_frame - max_backward_frame_diff
+        potential_ids_df = df[
+            (df['Detection ID'] > detection_id) &  # 後に出てきたID
+            (df['First Elapsed Seconds'] > allowed_frame_diff) &  # 許容されるフレーム差より後
+            (df['First Elapsed Seconds'] <= last_frame + max_forward_frame_diff) &  # 許容されるフレーム差以内
+            (df['first_motion_flag'] == target_motion_flag) &  # 同じmotion_flag
+            (~df['Detection ID'].isin(integrated_ids)) &  # 統合済みIDを除外
+            (df['Detection ID'] != detection_id)  # 自分自身を除外
+        ]
+
+        return df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame
+
+
     # tqdmを使用して進捗率を表示
     for detection_id in tqdm(unique_ids, desc="統合処理中"):
         # print("detection_id",detection_id)
@@ -268,38 +301,6 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
         if current_id_df.empty:
             # print("continue2")
             continue
-
-        def get_potential_ids_info(df,current_id_df):
-            last_frame = current_id_df['Elapsed Seconds'].max()
-            last_position = current_id_df[current_id_df['Elapsed Seconds'] == last_frame][['Center X', 'Center Y']].iloc[0].values
-            df['First Elapsed Seconds'] = df.groupby('Detection ID')['Elapsed Seconds'].transform('min')
-
-            # 統合元IDが最後に動いているかどうか確認
-            target_motion_flag = current_id_df["last_motion_flag"].iloc[-1]
-            if target_motion_flag == "moving":
-                max_backward_frame_diff = 5
-                max_forward_frame_diff = max_frame_diff_moving
-                allowed_distance_by_frame = threshold_moving
-            elif target_motion_flag == "staying":
-                max_backward_frame_diff = 300
-                max_forward_frame_diff = max_frame_diff_stationary
-                allowed_distance_by_frame = threshold_stationary
-            else:
-                # print("continue3")
-                return None
-
-            # 統合候補となるデータを抽出
-            allowed_frame_diff = last_frame - max_backward_frame_diff
-            potential_ids_df = df[
-                (df['Detection ID'] > detection_id) &  # 後に出てきたID
-                (df['First Elapsed Seconds'] > allowed_frame_diff) &  # 許容されるフレーム差より後
-                (df['First Elapsed Seconds'] <= last_frame + max_forward_frame_diff) &  # 許容されるフレーム差以内
-                (df['first_motion_flag'] == target_motion_flag) &  # 同じmotion_flag
-                (~df['Detection ID'].isin(integrated_ids)) &  # 統合済みIDを除外
-                (df['Detection ID'] != detection_id)  # 自分自身を除外
-            ]
-
-            return df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame
 
         df,potential_ids_df,last_frame,last_position,target_motion_flag,max_forward_frame_diff,allowed_distance_by_frame = get_potential_ids_info(df,current_id_df)
 
@@ -324,7 +325,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 first_position_target_id = target_id_df[target_id_df['Elapsed Seconds'] == target_id_first_frame][['Center X', 'Center Y']].iloc[0].values
                 frame_diff = max(target_id_first_frame - last_frame, 1)
                 if frame_diff > max_forward_frame_diff:
-                    print("continue5")
+                    # print("continue5")
                     continue
 
                 # フレーム差×allowed_distance_by_frameを許容距離とし、これ以上離れているものはID統合しない
