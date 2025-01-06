@@ -101,6 +101,8 @@ def main():
         # この秒数以内のデータは除外する
         threshold_sec = 180
         processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
+        # Duration列を削除
+        processing_area_df = processing_area_df.drop(columns=["Duration"])
         print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
         print("------------------秒数に基づく除外処理終了------------------")
 
