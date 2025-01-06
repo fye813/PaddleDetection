@@ -107,7 +107,7 @@ def main():
         print("------------------秒数に基づく除外処理終了------------------")
 
         # CSVファイルへの書き出し
-        write_to_csv(processing_area_df,input_file_dir,"excluded_data")
+        write_to_csv(processing_area_df,input_file_dir,"time_tracking_data_after_id_integration")
 
         print("------------------エリアごとの滞在時間出力開始------------------")
         # エリアごとの滞在時間を算出
