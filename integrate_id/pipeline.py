@@ -109,18 +109,18 @@ def main():
         # CSVファイルへの書き出し
         write_to_csv(processing_area_df,input_file_dir,"time_tracking_data_after_id_integration")
 
-        print("------------------エリアごとの滞在時間出力開始------------------")
-        # エリアごとの滞在時間を算出
-        area_stay_time_df = aggregate_area_stay_time(processing_area_df)
+        # print("------------------エリアごとの滞在時間出力開始------------------")
+        # # エリアごとの滞在時間を算出
+        # area_stay_time_df = aggregate_area_stay_time(processing_area_df)
 
-        # PlaceごとのユニークなDetection ID数を表示
-        unique_detection_counts = area_stay_time_df.groupby("Place")["Detection ID"].nunique()
-        print("PlaceごとのユニークなDetection ID数:",unique_detection_counts)
-        print("ユニークID数:",len(area_stay_time_df["Detection ID"].unique()))
-        print("------------------エリアごとの滞在時間出力終了------------------")
+        # # PlaceごとのユニークなDetection ID数を表示
+        # unique_detection_counts = area_stay_time_df.groupby("Place")["Detection ID"].nunique()
+        # print("PlaceごとのユニークなDetection ID数:",unique_detection_counts)
+        # print("ユニークID数:",len(area_stay_time_df["Detection ID"].unique()))
+        # print("------------------エリアごとの滞在時間出力終了------------------")
 
-        # CSVファイルへの書き出し
-        write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
+        # # CSVファイルへの書き出し
+        # write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
 
 # 設定読み込みの関数化
 def load_config(section=None):
