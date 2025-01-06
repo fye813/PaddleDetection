@@ -71,7 +71,7 @@ def main():
         print("------------------統合処理開始------------------")
         # 動いているか止まっているかを判定
         processing_area_df = assign_motion_flag(processing_area_df)
-        write_to_csv(processing_area_df,input_file_dir,"flagged_data")
+        # write_to_csv(processing_area_df,input_file_dir,"flagged_data")
 
         processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary)
         print("------------------統合処理終了------------------")
