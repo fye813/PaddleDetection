@@ -116,7 +116,7 @@ class Pipeline(object):
         filename = os.path.basename(filepath)
         pattern = r"^\d{4}-\d{4}_\d{4}-\d{4}_[\w\-]+_\d+\.mp4$"
         return bool(re.match(pattern, filename))
-    
+
 
     def _parse_input(self, image_file, image_dir, video_file, video_dir,
                      camera_id, rtsp):
@@ -132,7 +132,7 @@ class Pipeline(object):
             # ファイル名のフォーマットチェック
             if not Pipeline.check_filename_format(video_file):
                 raise ValueError(f"The video file name does not follow the specified format: {video_file}")
-            
+
             assert os.path.exists(
                 video_file
             ) or 'rtsp' in video_file, "video_file not exists and not an rtsp site."
@@ -1184,63 +1184,63 @@ class PipePredictor(object):
             os.makedirs(video_output_dir)
 
 
-        csv_output_path = os.path.join(video_output_dir, "detection_times.csv")
-        with open(csv_output_path, mode='w', newline='') as csv_file:
-            fieldnames = [
-                'Detection ID',
-                'Detection Time (start time)',
-                'Detection Time (end time)',
-                'Detection Time (seconds)',
-                'Score Min',
-                'Score Max',
-                'Score Average',
-                'First Frame Center X',
-                'First Frame Center Y',
-                'Last Frame Center X',
-                'Last Frame Center Y'
-                ]
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
-            writer.writeheader()
-            for track_id, frames in self.detection_tracking_info.items():
-                start_frame = frames[0]["frame_id"]
-                end_frame = frames[-1]["frame_id"]
-                start_time = round(start_frame / detection_time_calc_fps, 2)
-                end_time = round(end_frame / detection_time_calc_fps, 2)
-                detection_time = round(end_time - start_time, 2)
+        # csv_output_path = os.path.join(video_output_dir, "detection_times.csv")
+        # with open(csv_output_path, mode='w', newline='') as csv_file:
+        #     fieldnames = [
+        #         'Detection ID',
+        #         'Detection Time (start time)',
+        #         'Detection Time (end time)',
+        #         'Detection Time (seconds)',
+        #         'Score Min',
+        #         'Score Max',
+        #         'Score Average',
+        #         'First Frame Center X',
+        #         'First Frame Center Y',
+        #         'Last Frame Center X',
+        #         'Last Frame Center Y'
+        #         ]
+        #     writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        #     writer.writeheader()
+        #     for track_id, frames in self.detection_tracking_info.items():
+        #         start_frame = frames[0]["frame_id"]
+        #         end_frame = frames[-1]["frame_id"]
+        #         start_time = round(start_frame / detection_time_calc_fps, 2)
+        #         end_time = round(end_frame / detection_time_calc_fps, 2)
+        #         detection_time = round(end_time - start_time, 2)
 
-                # 最初のフレームでの中心座標を取得
-                first_center = frames[0]["center"]
-                first_center_x, first_center_y = first_center
-                first_center_x = round(first_center_x, 1)
-                first_center_y = round(first_center_y, 1)
+        #         # 最初のフレームでの中心座標を取得
+        #         first_center = frames[0]["center"]
+        #         first_center_x, first_center_y = first_center
+        #         first_center_x = round(first_center_x, 1)
+        #         first_center_y = round(first_center_y, 1)
 
-                # 最後のフレームでの中心座標を取得
-                last_center = frames[-1]["center"]
-                last_center_x, last_center_y = last_center
-                last_center_x = round(last_center_x, 1)
-                last_center_y = round(last_center_y, 1)
+        #         # 最後のフレームでの中心座標を取得
+        #         last_center = frames[-1]["center"]
+        #         last_center_x, last_center_y = last_center
+        #         last_center_x = round(last_center_x, 1)
+        #         last_center_y = round(last_center_y, 1)
 
-                # スコアのリストを作成
-                scores = [frame["score"] for frame in frames]
-                score_min = round(min(scores), 2)
-                score_max = round(max(scores),2)
-                score_average = round(sum(scores) / len(scores), 2)
+        #         # スコアのリストを作成
+        #         scores = [frame["score"] for frame in frames]
+        #         score_min = round(min(scores), 2)
+        #         score_max = round(max(scores),2)
+        #         score_average = round(sum(scores) / len(scores), 2)
 
-                writer.writerow({
-                    'Detection ID': int(track_id),
-                    'Detection Time (start time)': start_time,
-                    'Detection Time (end time)': end_time,
-                    'Detection Time (seconds)': detection_time,
-                    'Score Min': score_min,
-                    'Score Max': score_max,
-                    'Score Average': score_average,
-                    'First Frame Center X': first_center_x,
-                    'First Frame Center Y': first_center_y,
-                    'Last Frame Center X': last_center_x,
-                    'Last Frame Center Y': last_center_y
-                })
+        #         writer.writerow({
+        #             'Detection ID': int(track_id),
+        #             'Detection Time (start time)': start_time,
+        #             'Detection Time (end time)': end_time,
+        #             'Detection Time (seconds)': detection_time,
+        #             'Score Min': score_min,
+        #             'Score Max': score_max,
+        #             'Score Average': score_average,
+        #             'First Frame Center X': first_center_x,
+        #             'First Frame Center Y': first_center_y,
+        #             'Last Frame Center X': last_center_x,
+        #             'Last Frame Center Y': last_center_y
+        #         })
 
-        print(f'Detection times saved to {csv_output_path}')
+        # print(f'Detection times saved to {csv_output_path}')
 
         # グローバルな video_file を使用してファイル名から開始時刻を取得
         date_time_part = "-".join(video_name.split('-')[:2])  # 最初の2つの部分 "2024-0912_0900"
