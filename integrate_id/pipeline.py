@@ -27,7 +27,7 @@ def main():
     threshold_stationary = general_settings['threshold_stationary']
     min_detection_duration = general_settings['min_detection_duration']
 
-    # # 入力フォルダとファイルのパスを設定
+    # 入力フォルダとファイルのパスを設定
     input_path = os.path.join(current_dir, "..", input_folder_name)
     input_file_dirs = [os.path.join(input_path, x) for x in os.listdir(input_path) if not os.path.isfile(os.path.join(input_path, x))]
 
@@ -40,7 +40,8 @@ def main():
 
         # データ絞り込み 改修終わったら削除
         # df = df[df["datetime"]<="2024/11/27 08:19:08"]
-        # df = df[df["datetime"]>="2024/11/27 08:09:44"][df["datetime"]<="2024/11/27 08:19:08"]
+        # df = df[df["datetime"]>="2024/11/27 08:00:27"][df["datetime"]<="2024/11/27 11:32:10"]  # C
+        # df = df[df["datetime"]>="2024/11/27 10:36:42"][df["datetime"]<="2024/11/27 11:45:14"]  # D
         # df = df[df["Detection ID"].isin([35833,35916,36628,40661])]
 
         # 列名の前後に空白がないか確認して削除
@@ -114,6 +115,7 @@ def main():
         # processing_area_df = processing_area_df.drop(columns=["Duration"])
         print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
         print("------------------秒数に基づく除外処理終了------------------")
+        confirm_results(processing_area_df)
 
         # CSVファイルへの書き出し
         write_to_csv(processing_area_df,input_file_dir,"excluded_data")
@@ -131,6 +133,47 @@ def main():
         # # CSVファイルへの書き出し
         # write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
 
+# 現在判明している同一人物情報から結果を確認する
+def confirm_results(df):
+    integrate_lists = [
+        [1387,1417],
+        [902,953,1321,2116,2121,2151],
+        [7316,7369,7777,7824,8738,9037,9260,9415,9699,10093,10836,10873],
+        [35127,35833,35916,36628,40661,42606,49809,50298],
+        [122723,124605,124650],
+    ]
+
+    for integrate_list in integrate_lists:
+        print("--------------")
+        # 各IDの変化後IDを取得
+        detection_ids_after_change = [
+            df.loc[df['original_ID'] == id, 'Detection ID'].values[0]
+            if not df.loc[df['original_ID'] == id].empty else None
+            for id in integrate_list
+        ]
+
+        target_id = None
+        for i,(detection_id,detection_id_after_change) in enumerate(zip(integrate_list,detection_ids_after_change)):
+            if i == 0:
+                print("base:",detection_id)
+            else:
+                if not detection_id_after_change:
+                    comment = "削除されている"
+                    result = "―"
+                elif detection_id_after_change==integrate_list[0]:
+                    comment = "統合先IDと一致"
+                    result = "◯"
+                elif detection_id_after_change==integrate_list[i-1] or detection_id_after_change==target_id:
+                    comment = "誤変化後と一致"
+                    result = "◯"
+                else:
+                    result = "✕"
+                    target_id = detection_id
+                    if detection_id == detection_id_after_change:
+                        comment = "統合できていない"
+                    else:
+                        comment = "別のIDに統合されてしまっている"
+                print(detection_id,detection_id_after_change,result,comment)
 
 # 設定読み込みの関数化
 def load_config(section=None):
@@ -351,7 +394,7 @@ def merge_similar_detections(df, max_frame_diff_moving, max_frame_diff_stationar
                 integrate_cnt += 1
                 integrate_cnt_in_a_loop += 1
                 integrated_ids.add(target_id)
-                if detection_id == 35165:
+                if detection_id == 122723:
                     print(target_id)
                     print("frame_diff",frame_diff)
                     print("allowed_distance_by_frame",allowed_distance_by_frame)
