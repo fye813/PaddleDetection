@@ -473,9 +473,9 @@ def assign_areas(df, area_settings):
 
 def aggregate_area_stay_time(df):
     # Detection IDとPlaceをキーにして集約
-    df = df.groupby(["Detection ID", "Place"]).size().reset_index(name="Area Stay Time")
+    area_stay_time_df = df.groupby(["Detection ID", "Place"]).size().reset_index(name="Area Stay Time")
 
-    return df
+    return area_stay_time_df
 
 # Detection IDごとに、対象エリア内の滞在時間がthreshold_sec未満のデータを削除
 def calc_duration(df):
