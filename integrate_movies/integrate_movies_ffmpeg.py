@@ -14,7 +14,6 @@ def main():
     output_file = f'2024-{input_folder.split("/")[-1].replace("-","")}_0800-1830_mov_4.mp4'
     output_path = os.path.join("/mnt/disks/video_storage/integrate_movie", output_file)
 
-
     # フォルダが存在するか確認
     if not os.path.exists(input_folder):
         print(f'エラー: 指定されたフォルダ "{input_folder}" は存在しません。')
@@ -25,6 +24,27 @@ def main():
     if not video_files:
         print(f'エラー: フォルダ "{input_folder}" 内に動画ファイルが見つかりません。')
         exit()
+
+    # 統合対象ファイルが21個か確認
+    if not len(video_files) == 21:
+        print("統合対象ファイル数が21ではありません")
+    print(f"対象ファイル数：{len(video_files)}")
+
+    # 動画ファイルの時間を取得するコード
+    total_duration = 0
+    for video_file in video_files:
+        # FFmpegを使用して動画ファイルの時間を取得
+        duration_command = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', video_file]
+        try:
+            result = subprocess.run(duration_command, capture_output=True, text=True, check=True)
+            duration = float(result.stdout.strip())
+            total_duration += duration
+        except subprocess.CalledProcessError as e:
+            print(f"エラー: {video_file} の時間取得に失敗しました。")
+
+    if not 37500 < total_duration < 38100:
+        print("統合対象ファイルの合計時間が10時間25～35分ではありません")
+    print(f"全動画ファイルの合計時間: {total_duration}秒")
 
     # ファイル名でソート
     video_files.sort()
@@ -55,6 +75,15 @@ def main():
         # 処理完了後にファイルを移動
         shutil.move(output_file, output_path)
         print(f'最終出力先: {output_path}')
+
+        # 出力ファイルの長さを確認
+        duration_command = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', output_path]
+        result = subprocess.run(duration_command, capture_output=True, text=True, check=True)
+        output_duration = float(result.stdout.strip())
+        if not 37500 < total_duration < 38100:
+            print("統合対象ファイルの合計時間が10時間25～35分ではありません")
+        print(f'出力ファイルの長さ: {output_duration}秒')
+
     except subprocess.CalledProcessError as e:
         print(f'エラー: {e}')
     finally:
