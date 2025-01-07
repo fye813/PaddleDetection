@@ -122,6 +122,11 @@ def main():
         # # CSVファイルへの書き出し
         # write_to_csv(area_stay_time_df,input_file_dir,"area_stay_time_data")
 
+        print("------------------時間ごとのID数出力------------------")
+        track_id_count_df = processing_area_df.groupby(["datetime","Elapsed Seconds"]).size().reset_index(name="Detection ID Count")
+        write_to_csv(track_id_count_df,input_file_dir,"track_id_count_id_integration")
+
+
 # 設定読み込みの関数化
 def load_config(section=None):
     yaml_filename = 'config.yaml'
