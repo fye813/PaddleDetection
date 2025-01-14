@@ -12,7 +12,8 @@ def main():
 
     input_folder = args.input_folder
     output_file = f'2024-{input_folder.split("/")[-1].replace("-","")}_0800-1830_mov_4.mp4'
-    output_path = os.path.join("/mnt/disks/video_storage/integrate_movie", output_file)
+    output_folder = os.path.join(os.path.dirname(input_folder), "integrate_movies")
+    output_path = os.path.join(output_folder, output_file)
 
     # フォルダが存在するか確認
     if not os.path.exists(input_folder):
