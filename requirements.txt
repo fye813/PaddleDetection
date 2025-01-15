@@ -22,6 +22,3 @@ pyclipper
 
 # for culane data augumetation
 imgaug>=0.4.0
-
-
-pandas
