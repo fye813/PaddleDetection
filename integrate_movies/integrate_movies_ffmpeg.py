@@ -62,7 +62,6 @@ def main():
         '-f', 'concat',  # ファイルリストを結合
         '-safe', '0',
         '-i', 'file_list.txt',
-        '-vf', 'fps=3',  # FPS設定
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '23',  # 画質調整
