@@ -11,9 +11,15 @@ def main():
     args = parser.parse_args()
 
     input_folder = args.input_folder
-    output_file = f'2024-{input_folder.split("/")[-1].replace("-","")}_0800-1830_mov_4.mp4'
-    output_folder = os.path.join(os.path.dirname(input_folder), "integrate_movies")
+    movie_filename = next(f for f in os.listdir(input_folder) if f.endswith('.mp4'))
+    movie_filename_date_parts = movie_filename.split("_")[1]
+    output_file = f'20{movie_filename_date_parts[:2]}-{movie_filename_date_parts[2:6]}_0800-1830_mov_4.mp4'
+    output_folder = os.path.join(os.path.join("/mnt","efs"), "integrate_movies")
     output_path = os.path.join(output_folder, output_file)
+
+    # 出力フォルダが存在しない場合は作成
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
 
     # フォルダが存在するか確認
     if not os.path.exists(input_folder):
@@ -62,6 +68,7 @@ def main():
         '-f', 'concat',  # ファイルリストを結合
         '-safe', '0',
         '-i', 'file_list.txt',
+        # '-vf', 'fps=3',  # FPS設定
         '-c:v', 'libx264',
         '-preset', 'fast',
         '-crf', '23',  # 画質調整
