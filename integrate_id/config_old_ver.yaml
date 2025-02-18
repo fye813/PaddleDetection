@@ -1,0 +1,33 @@
+settings:
+  general:
+    max_frame_diff: 5
+    threshold: 60
+    min_detection_duration: 3
+
+exclusion_areas: null
+# [受付, 階段]  # 例：[エリア1, エリア2]
+
+areas:
+  processing:
+    processing_zone:
+      x_start: 150
+      x_end: 350
+      y_start: 120
+      y_end: "max"
+    extended_processing_zone:
+      x_start: 350
+      x_end: "max"
+      y_start: 200
+      y_end: "max"
+
+  no_processing:
+    no_processing_zone:
+      x_start: 150
+      x_end: 350
+      y_start: "min"
+      y_end: 120
+    extended_no_processing_zone:
+      x_start: 350
+      x_end: "max"
+      y_start: "min"
+      y_end: 200
