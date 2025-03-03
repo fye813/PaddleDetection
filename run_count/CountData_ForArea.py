@@ -1,19 +1,11 @@
 import os
-import glob
 import argparse
 import pandas as pd
-import re
-from typing import List, Dict, Optional
 
 
 def main():
     parser = argparse.ArgumentParser(description="エリア定義を用いてCSVデータを処理します")
-    parser.add_argument(
-        "--step",
-        required=True,
-        choices=["assign", "count"],
-        help="実行する処理を選択 (assign: エリア判定, count: 人数カウント)"
-    )
+
     parser.add_argument("--input_folder", required=True, help="入力フォルダのパス")
     parser.add_argument("--area_csv", help="エリア定義のExcelファイルのパス (エリア判定時に必要)")
     args = parser.parse_args()
@@ -21,37 +13,28 @@ def main():
     input_folder = args.input_folder
 
 
-    if args.step == "assign":
-        input_file = "time_tracking_data.csv"
-        input_file_path = os.path.join(input_folder, input_file)
+    input_file = "time_tracking_data.csv"
+    input_file_path = os.path.join(input_folder, input_file)
 
-        # 入力ファイルの存在確認
-        if not os.path.exists(input_file_path):
-            raise ValueError(f"エラー: 指定したディレクトリに{input_file} が見つかりません。")
+    # 入力ファイルの存在確認
+    if not os.path.exists(input_file_path):
+        raise ValueError(f"エラー: 指定したディレクトリに{input_file} が見つかりません。")
 
-        df = pd.read_csv(input_file_path)
+    df = pd.read_csv(input_file_path)
 
-        if not args.area_csv:
-            raise ValueError("エリア判定を行うには --area_csv を指定してください")
-        assigned_df = assign_areas(df, args.area_csv)
-        output_file_path = os.path.join(input_folder, "area_data.csv")
-        assigned_df.to_csv(output_file_path, index=False, encoding="utf-8-sig")
-        print(f"Processed area assignment: {output_file_path}")
+    # エリア判定
+    if not args.area_csv:
+        raise ValueError("エリア判定を行うには --area_csv を指定してください")
+    assigned_df = assign_areas(df, args.area_csv)
+    output_file_path = os.path.join(input_folder, "area_data.csv")
+    assigned_df.to_csv(output_file_path, index=False, encoding="utf-8-sig")
+    print(f"Processed area assignment: {output_file_path}")
 
-    elif args.step == "count":
-        input_file = "area_data.csv"
-        input_file_path = os.path.join(input_folder, input_file)
-
-        # 入力ファイルの存在確認
-        if not os.path.exists(input_file_path):
-            raise ValueError(f"エラー: 指定したディレクトリに{input_file} が見つかりません。")
-
-        df = pd.read_csv(input_file_path)
-
-        counted_df = count_areas(df)
-        output_file_path = os.path.join(input_folder, "count_data.csv")
-        counted_df.to_csv(output_file_path, index=False, encoding="utf-8-sig")
-        print(f"Processed area count: {output_file_path}")
+    # エリアごとにカウント
+    counted_df = count_areas(assigned_df)
+    output_file_path = os.path.join(input_folder, "count_data.csv")
+    counted_df.to_csv(output_file_path, index=False, encoding="utf-8-sig")
+    print(f"Processed area count: {output_file_path}")
 
 
 def assign_areas(df, area_csv_path):
