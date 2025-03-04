@@ -111,11 +111,11 @@ class Pipeline(object):
 
 
     @staticmethod
-    def check_filename_format(filepath):
-        # 正規表現パターン: yyyy-mmdd_hhmm-hhmm_任意文字列_任意数値.mp4
-        filename = os.path.basename(filepath)
-        pattern = r"^\d{4}-\d{4}_\d{4}-\d{4}_[\w\-]+_\d+\.mp4$"
-        return bool(re.match(pattern, filename))
+    # def check_filename_format(filepath):
+    #     # 正規表現パターン: yyyy-mmdd_hhmm-hhmm_任意文字列_任意数値.mp4
+    #     filename = os.path.basename(filepath)
+    #     pattern = r"^\d{4}-\d{4}_\d{4}-\d{4}_[\w\-]+_\d+\.mp4$"
+    #     return bool(re.match(pattern, filename))
 
 
     def _parse_input(self, image_file, image_dir, video_file, video_dir,
@@ -130,8 +130,8 @@ class Pipeline(object):
 
         elif video_file is not None:
             # ファイル名のフォーマットチェック
-            if not Pipeline.check_filename_format(video_file):
-                raise ValueError(f"The video file name does not follow the specified format: {video_file}")
+            # if not Pipeline.check_filename_format(video_file):
+            #     raise ValueError(f"The video file name does not follow the specified format: {video_file}")
 
             assert os.path.exists(
                 video_file
@@ -143,9 +143,9 @@ class Pipeline(object):
         elif video_dir is not None:
             videof = [os.path.join(video_dir, x) for x in os.listdir(video_dir)]
             # ファイル名のフォーマットチェック
-            for video_file in videof:
-                if not Pipeline.check_filename_format(video_file):
-                    raise ValueError(f"The video file name in the directory does not follow the specified format: {video_file}")
+            # for video_file in videof:
+            #     if not Pipeline.check_filename_format(video_file):
+            #         raise ValueError(f"The video file name in the directory does not follow the specified format: {video_file}")
 
             if len(videof) > 1:
                 self.multi_camera = True
