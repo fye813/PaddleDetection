@@ -43,7 +43,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Run all steps in sequence with a single top-level output directory.')
 
     parser.add_argument(
-        '--input_folder_path',
+        '--input_folder',
         type=str, default='input', help='Input directory for the first step'
     )
 
