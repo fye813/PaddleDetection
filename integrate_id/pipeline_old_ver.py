@@ -10,7 +10,7 @@ current_dir = os.path.dirname(__file__)
 
 def main():
     input_folder_name = "output"
-    input_path = os.path.join("/mnt/efs", input_folder_name)
+    input_path = os.path.join("/mnt/s3", input_folder_name)
     target_filename = "time_tracking_data.csv"
 
     # コマンドライン引数の解析

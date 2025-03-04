@@ -14,7 +14,7 @@ def main():
     movie_filename = next(f for f in os.listdir(input_folder) if f.endswith('.mp4'))
     movie_filename_date_parts = movie_filename.split("_")[1]
     output_file = f'20{movie_filename_date_parts[:2]}-{movie_filename_date_parts[2:6]}_0800-1830_mov_4.mp4'
-    output_folder = os.path.join(os.path.join("/mnt","efs"), "integrate_movies")
+    output_folder = os.path.join(os.path.join("/mnt","s3"), "integrate_movies")
     output_path = os.path.join(output_folder, output_file)
 
     # 出力フォルダが存在しない場合は作成
