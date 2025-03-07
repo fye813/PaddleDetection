@@ -104,19 +104,24 @@ def main():
 
     # キャッシュを削除
     cache_path = '/var/s3_cache'
-    for filename in os.listdir(cache_path):
-        original_movies_path = os.path.join(cache_path, filename, "original_movies")
-        for day_folder in os.listdir(original_movies_path):
-            if day_folder != os.path.basename(input_folder):
+    if os.path.exists(cache_path):
+        for filename in [f for f in os.listdir(cache_path) if f.startswith('.')]:
+            original_movies_path = os.path.join(cache_path, filename, "original_movies")
+            if not os.path.exists(original_movies_path):
                 continue
-            day_folder_path = os.path.join(original_movies_path, day_folder)
-            try:
-                if os.path.isfile(day_folder_path) or os.path.islink(day_folder_path):
-                    os.unlink(day_folder_path)
-                elif os.path.isdir(day_folder_path):
-                    shutil.rmtree(day_folder_path)
-            except Exception as e:
-                print(f"Failed to delete {day_folder_path}. Reason: {e}")
+            for day_folder in os.listdir(original_movies_path):
+                if day_folder != os.path.basename(input_folder):
+                    continue
+                day_folder_path = os.path.join(original_movies_path, day_folder)
+                try:
+                    if os.path.isfile(day_folder_path) or os.path.islink(day_folder_path):
+                        os.unlink(day_folder_path)
+                    elif os.path.isdir(day_folder_path):
+                        shutil.rmtree(day_folder_path)
+                except Exception as e:
+                    print(f"Failed to delete {day_folder_path}. Reason: {e}")
+    else:
+        print(f"キャッシュパス '{cache_path}' が見つかりません。")
 
 
 if __name__ == '__main__':
