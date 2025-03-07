@@ -3,20 +3,54 @@ import pandas as pd
 import numpy as np
 from matplotlib.colors import to_rgb
 from PIL import Image, ImageDraw, ImageFont
+import argparse
 
-def visualize_areas_with_colors(frame, csv_path, output_path, alpha=0.5):
+def main():
+    # 引数を取得
+    args = parse_arguments()
+
+    # 既存のコードで引数を使用
+    video_path = args.video_path
+    output_path = args.output_path
+    area_csv_path = args.area_csv_path
+
+    # 動画の1フレーム目を取得
+    cap = cv2.VideoCapture(video_path)
+    ret, frame = cap.read()
+    cap.release()
+
+    if ret:
+        visualize_areas_with_colors(frame, area_csv_path, output_path)
+    else:
+        print("Error: 動画の1フレーム目を読み込めませんでした")
+
+
+def parse_arguments():
+    """コマンドライン引数を解析する関数"""
+    parser = argparse.ArgumentParser(description='Process video and overlay areas.')
+
+    # 引数を追加
+    parser.add_argument('--video_path', type=str, help='動画ファイルのパス')
+    parser.add_argument('--output_path', type=str, help='保存する画像ファイルのパス')
+    parser.add_argument('--area_csv_path', type=str, help='座標を記載したCSVファイルのパス')
+
+    # 引数を解析
+    return parser.parse_args()
+
+
+def visualize_areas_with_colors(frame, area_csv_path, output_path, alpha=0.5):
     """
     フレームに指定されたエリアを描画し、CSVで指定された色を使用する。
 
     Parameters:
     - frame (numpy.ndarray): 画像フレーム
-    - csv_path (str): エリア情報と色が記載されたCSVファイルのパス
+    - area_csv_path (str): エリア情報と色が記載されたCSVファイルのパス
     - output_path (str): 保存する画像ファイルのパス
     - alpha (float): オーバーレイの透明度
     """
     # CSVファイルを読み込む
     try:
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(area_csv_path)
     except Exception as e:
         print(f"Error: CSVファイルを読み込めませんでした - {e}")
         return
@@ -75,7 +109,7 @@ def visualize_areas_with_colors(frame, csv_path, output_path, alpha=0.5):
         # 座標と領域名
         x_start, y_start = int(row['開始x座標']), int(row['開始y座標'])
         area_name = row['エリア名'] if 'エリア名' in row else ""
-        
+
         if area_name:
             text_x = x_start + 5
             text_y = y_start + 5
@@ -90,17 +124,4 @@ def visualize_areas_with_colors(frame, csv_path, output_path, alpha=0.5):
     cv2.imwrite(output_path, final_result)
     print(f"画像を保存しました: {output_path}")
 
-# 使用例
-video_path = "input/2024-1113_0800-1830_mov_4.mp4"  # 動画ファイルのパス
-output_path = "output/output_frame.jpg"  # 保存する画像ファイルのパス
-csv_path = "integrate_id/area_after_color.csv"  # 座標を記載したCSVファイルのパス
-
-# 動画の1フレーム目を取得
-cap = cv2.VideoCapture(video_path)
-ret, frame = cap.read()
-cap.release()
-
-if ret:
-    visualize_areas_with_colors(frame, csv_path, output_path)
-else:
-    print("Error: 動画の1フレーム目を読み込めませんでした")
+main()
