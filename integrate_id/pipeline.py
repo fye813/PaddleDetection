@@ -10,24 +10,24 @@ current_dir = os.path.dirname(__file__)
 tqdm.pandas()
 
 def main():
-    input_folder_name = "output"
-    input_path = os.path.join("/mnt/s3", input_folder_name)
     target_filename = "time_tracking_data.csv"
 
-    # コマンドライン引数の解析
-    parser = argparse.ArgumentParser(description="Process area_before or area_after CSV files.")
-    # 使用するエリアファイルを指定する引数
-    parser.add_argument("mode", choices=["before", "after"], help="Specify whether to use area_before or area_after")
-    # 出力先のパスを指定するコマンドライン引数を追加
-    parser.add_argument("--output_folder", type=str, default=input_path, help="出力先フォルダのパスを指定してください")
-    args = parser.parse_args()
+    # 引数を取得
+    args = parse_arguments()
 
     area_file_path = os.path.join(current_dir, f"area_{args.mode}.csv")
 
+    input_date_folder = args.input_date_folder.rstrip('/')
     output_root_path = args.output_folder
+
     # 出力フォルダが存在しない場合は作成
     if not os.path.exists(output_root_path):
         os.makedirs(output_root_path)
+
+    # 対象の日付の出力フォルダ作成
+    output_path = os.path.join(output_root_path, os.path.basename(input_date_folder))
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
     # 統合設定を取得
     general_settings = load_config("general")
@@ -37,109 +37,112 @@ def main():
     threshold_stationary = general_settings['threshold_stationary']
     min_detection_duration = general_settings['min_detection_duration']
 
-    # 入力フォルダとファイルのパスを設定
-    input_file_dirs = [os.path.join(input_path, x) for x in os.listdir(input_path) if not os.path.isfile(os.path.join(input_path, x))]
+    input_file_path = os.path.join(input_date_folder, target_filename)
+    print(f"処理開始: {input_file_path}")
 
-    for input_file_dir in input_file_dirs:
-        input_file_path = os.path.join(input_file_dir, target_filename)
-        print(f"処理開始: {input_file_path}")
+    # CSVファイルを読み込み、空行を削除
+    df = pd.read_csv(input_file_path).dropna(how='all')
 
-        # 出力フォルダ
-        output_path = os.path.join(output_root_path, os.path.basename(input_file_dir))
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
+    # 列名の前後に空白がないか確認して削除
+    df.columns = df.columns.str.strip()
+    total_data_points = len(df)
+    print(f"データポイントの総数: {total_data_points}")
 
-        # CSVファイルを読み込み、空行を削除
-        df = pd.read_csv(input_file_path).dropna(how='all')
+    # オリジナルIDの保持
+    df["original_ID"] = df["Detection ID"]
 
-        # 列名の前後に空白がないか確認して削除
-        df.columns = df.columns.str.strip()
-        total_data_points = len(df)
-        print(f"データポイントの総数: {total_data_points}")
+    # 入力データの列の順序を保存
+    original_columns = df.columns.tolist()
 
-        # オリジナルIDの保持
-        df["original_ID"] = df["Detection ID"]
+    # 設定情報をDataFrameに保持
+    df["max_frame_diff_moving"] = max_frame_diff_moving
+    df["threshold_moving"] = threshold_moving
+    df["max_frame_diff_stationary"] = max_frame_diff_stationary
+    df["threshold_stationary"] = threshold_stationary
+    df["min_detection_duration"] = min_detection_duration
 
-        # 入力データの列の順序を保存
-        original_columns = df.columns.tolist()
+    # 入力データの 'Center X' と 'Center Y' のデータ型を取得
+    center_x_dtype = df['Center X'].dtype
+    center_y_dtype = df['Center Y'].dtype
 
-        # 設定情報をDataFrameに保持
-        df["max_frame_diff_moving"] = max_frame_diff_moving
-        df["threshold_moving"] = threshold_moving
-        df["max_frame_diff_stationary"] = max_frame_diff_stationary
-        df["threshold_stationary"] = threshold_stationary
-        df["min_detection_duration"] = min_detection_duration
+    print("------------------クレンジング処理開始------------------")
+    processing_area_df = cleanse_data(df, min_detection_duration)
+    print("------------------クレンジング処理終了------------------")
 
-        # 入力データの 'Center X' と 'Center Y' のデータ型を取得
-        center_x_dtype = df['Center X'].dtype
-        center_y_dtype = df['Center Y'].dtype
+    print("------------------補完処理開始------------------")
+    processing_area_df = fill_missing_detections(processing_area_df)
+    print("------------------補完処理終了------------------")
 
-        print("------------------クレンジング処理開始------------------")
-        processing_area_df = cleanse_data(df, min_detection_duration)
-        print("------------------クレンジング処理終了------------------")
+    print("------------------統合処理開始------------------")
+    # 動いているか止まっているかを判定
+    processing_area_df = assign_motion_flag(processing_area_df)
+    # write_to_csv(processing_area_df,output_path,"flagged_data")
 
-        print("------------------補完処理開始------------------")
-        processing_area_df = fill_missing_detections(processing_area_df)
-        print("------------------補完処理終了------------------")
+    processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary)
+    print("------------------統合処理終了------------------")
 
-        print("------------------統合処理開始------------------")
-        # 動いているか止まっているかを判定
-        processing_area_df = assign_motion_flag(processing_area_df)
-        # write_to_csv(processing_area_df,output_path,"flagged_data")
+    # 'Center X' と 'Center Y' のデータ型を元に戻す
+    processing_area_df['Center X'] = processing_area_df['Center X'].astype(center_x_dtype)
+    processing_area_df['Center Y'] = processing_area_df['Center Y'].astype(center_y_dtype)
 
-        processing_area_df = merge_similar_detections(processing_area_df, max_frame_diff_moving, max_frame_diff_stationary, threshold_moving, threshold_stationary)
-        print("------------------統合処理終了------------------")
+    # 列の順序を入力時と同じに並び替える
+    processing_area_df = processing_area_df[original_columns+["motion_flag"]]
 
-        # 'Center X' と 'Center Y' のデータ型を元に戻す
-        processing_area_df['Center X'] = processing_area_df['Center X'].astype(center_x_dtype)
-        processing_area_df['Center Y'] = processing_area_df['Center Y'].astype(center_y_dtype)
+    print("------------------エリア付与開始------------------")
+    area_settings = load_area_settings(area_file_path)
+    processing_area_df = assign_areas(processing_area_df, area_settings)
 
-        # 列の順序を入力時と同じに並び替える
-        processing_area_df = processing_area_df[original_columns+["motion_flag"]]
+    # Place列を指定された位置に移動（Center YとScoreの間）
+    cols = processing_area_df.columns.tolist()
+    place_index = cols.index("Center Y") + 1
+    cols.insert(place_index, cols.pop(cols.index("Place")))
+    processing_area_df = processing_area_df[cols]
+    print("------------------エリア付与終了------------------")
 
-        print("------------------エリア付与開始------------------")
-        area_settings = load_area_settings(area_file_path)
-        processing_area_df = assign_areas(processing_area_df, area_settings)
+    print("------------------秒数に基づく除外処理開始------------------")
+    # IDごとの滞在時間を算出
+    processing_area_df = calc_duration(processing_area_df)
 
-        # Place列を指定された位置に移動（Center YとScoreの間）
-        cols = processing_area_df.columns.tolist()
-        place_index = cols.index("Center Y") + 1
-        cols.insert(place_index, cols.pop(cols.index("Place")))
-        processing_area_df = processing_area_df[cols]
-        print("------------------エリア付与終了------------------")
+    # この秒数以内のデータは除外する
+    threshold_sec = 180
+    processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
+    # Duration列を削除
+    processing_area_df = processing_area_df.drop(columns=["Duration"])
+    print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
+    print("------------------秒数に基づく除外処理終了------------------")
 
-        print("------------------秒数に基づく除外処理開始------------------")
-        # IDごとの滞在時間を算出
-        processing_area_df = calc_duration(processing_area_df)
+    # CSVファイルへの書き出し
+    write_to_csv(processing_area_df,output_path,"time_tracking_data_after_id_integration")
 
-        # この秒数以内のデータは除外する
-        threshold_sec = 180
-        processing_area_df = processing_area_df[processing_area_df["Duration"] > threshold_sec]
-        # Duration列を削除
-        processing_area_df = processing_area_df.drop(columns=["Duration"])
-        print("ユニークID数:",len(processing_area_df["Detection ID"].unique()))
-        print("------------------秒数に基づく除外処理終了------------------")
+    # print("------------------エリアごとの滞在時間出力開始------------------")
+    # # エリアごとの滞在時間を算出
+    # area_stay_time_df = aggregate_area_stay_time(processing_area_df)
 
-        # CSVファイルへの書き出し
-        write_to_csv(processing_area_df,output_path,"time_tracking_data_after_id_integration")
+    # # PlaceごとのユニークなDetection ID数を表示
+    # unique_detection_counts = area_stay_time_df.groupby("Place")["Detection ID"].nunique()
+    # print("PlaceごとのユニークなDetection ID数:",unique_detection_counts)
+    # print("ユニークID数:",len(area_stay_time_df["Detection ID"].unique()))
+    # print("------------------エリアごとの滞在時間出力終了------------------")
 
-        # print("------------------エリアごとの滞在時間出力開始------------------")
-        # # エリアごとの滞在時間を算出
-        # area_stay_time_df = aggregate_area_stay_time(processing_area_df)
+    # # CSVファイルへの書き出し
+    # write_to_csv(area_stay_time_df,output_path,"area_stay_time_data")
 
-        # # PlaceごとのユニークなDetection ID数を表示
-        # unique_detection_counts = area_stay_time_df.groupby("Place")["Detection ID"].nunique()
-        # print("PlaceごとのユニークなDetection ID数:",unique_detection_counts)
-        # print("ユニークID数:",len(area_stay_time_df["Detection ID"].unique()))
-        # print("------------------エリアごとの滞在時間出力終了------------------")
+    print("------------------時間ごとのID数出力------------------")
+    track_id_count_df = processing_area_df.groupby(["datetime","Elapsed Seconds"]).size().reset_index(name="Detection ID Count")
+    write_to_csv(track_id_count_df,output_path,"track_id_count_id_integration")
 
-        # # CSVファイルへの書き出し
-        # write_to_csv(area_stay_time_df,output_path,"area_stay_time_data")
 
-        print("------------------時間ごとのID数出力------------------")
-        track_id_count_df = processing_area_df.groupby(["datetime","Elapsed Seconds"]).size().reset_index(name="Detection ID Count")
-        write_to_csv(track_id_count_df,output_path,"track_id_count_id_integration")
+def parse_arguments():
+    """コマンドライン引数を解析する関数"""
+    parser = argparse.ArgumentParser(description="Process area_before or area_after CSV files.")
+    # 使用するエリアファイルを指定する引数
+    parser.add_argument("mode", choices=["before", "after"], help="Specify whether to use area_before or area_after")
+    # 入力先のパスを指定するコマンドライン引数を追加
+    parser.add_argument("--input_date_folder", type=str, help="入力先フォルダのパスを指定してください")
+    parser.add_argument("--output_folder", type=str, help="出力先フォルダのパスを指定してください")
 
+    # 引数を解析
+    return parser.parse_args()
 
 # 設定読み込みの関数化
 def load_config(section=None):
