@@ -10,11 +10,11 @@ def main():
 
     output_folder_path = input_folder_path
     for input_file in input_files:
-        print(f"Processing {input_file}")
         # ステップ1：エリア滞在区間計算処理
         input_file_path = os.path.join(input_folder_path, input_file)
         if not os.path.exists(input_file_path):
             continue
+        print(f"Processing {input_file}")
 
         summary_df = calculate_stay_intervals(input_file_path)
 
