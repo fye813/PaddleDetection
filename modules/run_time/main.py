@@ -13,6 +13,9 @@ def main():
         print(f"Processing {input_file}")
         # ステップ1：エリア滞在区間計算処理
         input_file_path = os.path.join(input_folder_path, input_file)
+        if not os.path.exists(input_file_path):
+            continue
+
         summary_df = calculate_stay_intervals(input_file_path)
 
         output_filename = f"{input_file.split('.', 1)[0]}_summary.csv"
