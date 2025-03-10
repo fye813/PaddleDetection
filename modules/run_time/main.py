@@ -5,7 +5,7 @@ import pandas as pd
 def main():
     args = parse_args()
 
-    input_folder_path = args.input_folder_path
+    input_folder_path = args.input_folder
     input_files = ["excluded_data.csv","time_tracking_data_after_id_integration.csv"]
 
     output_folder_path = input_folder_path
