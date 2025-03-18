@@ -15,8 +15,8 @@ def main():
     movie_filename_date_parts = movie_filename.split("_")[1]
     output_file = f'20{movie_filename_date_parts[:2]}-{movie_filename_date_parts[2:6]}_0800-1830_mov_4.mp4'
     output_foldername = "integrated_movies"
-    # output_folder_path = os.path.join(os.path.join("/mnt","s3"), output_foldername)
-    output_folder_path = os.path.join("/mnt","efs","efs",output_foldername)
+    output_folder_path = os.path.join(os.path.join("/mnt","s3"), output_foldername)
+    # output_folder_path = os.path.join("/mnt","efs","efs",output_foldername)
     output_path = os.path.join(output_folder_path, output_file)
 
     # 出力フォルダが存在しない場合は作成
@@ -82,9 +82,9 @@ def main():
         print(f'結合完了: {output_file}')
 
         # 処理完了後にファイルを移動
-        shutil.move(output_file, output_path)
-        # shutil.copy2(output_file, output_path)
-        # os.remove(output_file)
+        # shutil.move(output_file, output_path)
+        shutil.copy2(output_file, output_path)
+        os.remove(output_file)
         print(f'最終出力先: {output_path}')
 
         # 出力ファイルの長さを確認
