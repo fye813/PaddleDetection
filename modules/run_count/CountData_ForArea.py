@@ -12,8 +12,7 @@ def main():
 
     input_folder = args.input_folder
 
-
-    input_file = "time_tracking_data.csv"
+    input_file = "time_tracking_data_cut.csv"
     input_file_path = os.path.join(input_folder, input_file)
 
     # 入力ファイルの存在確認
