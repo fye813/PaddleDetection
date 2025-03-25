@@ -45,6 +45,13 @@ def main():
     total_data_points = len(df)
     print(f"データポイントの総数: {total_data_points}")
 
+    # 18:30以降のデータを削除し、CSVファイルに書き出し
+    df["datetime"] = pd.to_datetime(df["datetime"])
+    df = df[df["datetime"].dt.time < datetime.time(18, 30)]
+    write_to_csv(df,output_path,"time_tracking_data_cut")
+    total_data_points = len(df)
+    print(f"データポイントの総数(18：30以降削除): {total_data_points}")
+
     # オリジナルIDの保持
     df["original_ID"] = df["Detection ID"]
 
