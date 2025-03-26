@@ -673,7 +673,7 @@ class PipePredictor(object):
             if self.cfg['visual']:
                 self.visualize_image(batch_file, batch_input, self.pipeline_res)
 
-    def capturevideo(self, capture, queue, original_fps, target_fps, stop_event):
+    def capturevideo(self, capture, queue, original_fps, target_fps, stop_event, frame_count):
         capture_frame_id = 0
         frame_skip_interval = original_fps // target_fps
         while True:
@@ -691,7 +691,7 @@ class PipePredictor(object):
             if capture_frame_id % frame_skip_interval == 0:
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 queue.put(frame_rgb)
-                print(f"[DEBUG] Added frame {capture_frame_id} /279515 to queue")
+                print(f"[DEBUG] Added frame {capture_frame_id} /{frame_count} to queue")
 
             capture_frame_id += 1
 
@@ -791,7 +791,7 @@ class PipePredictor(object):
         framequeue = queue.Queue(10)
 
         capture_thread = threading.Thread(
-            target=self.capturevideo, args=(capture, framequeue, original_fps, target_fps, self.stop_event))
+            target=self.capturevideo, args=(capture, framequeue, original_fps, target_fps, self.stop_event, frame_count))
         capture_thread.start()
         time.sleep(1)
 
