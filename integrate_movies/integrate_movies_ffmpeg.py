@@ -15,7 +15,6 @@ def main():
     movie_filename_date_parts = movie_filename.split("_")[1]
     output_file = f'20{movie_filename_date_parts[:2]}-{movie_filename_date_parts[2:6]}_0800-1830_mov_4.mp4'
     output_foldername = "integrated_movies"
-    #output_folder_path = os.path.join(os.path.join("/mnt","s3"), output_foldername)
     output_folder_path = os.path.join("/mnt","efs","efs",output_foldername)
     output_path = os.path.join(output_folder_path, output_file)
 
@@ -25,19 +24,16 @@ def main():
 
     # フォルダが存在するか確認
     if not os.path.exists(input_folder):
-        print(f'エラー: 指定されたフォルダ "{input_folder}" は存在しません。')
+        print(f'ERROR: 指定されたフォルダ "{input_folder}" は存在しません。')
         exit()
 
     # フォルダ内の動画ファイルを取得
     video_files = [os.path.join(input_folder, file) for file in os.listdir(input_folder) if file.endswith('.mp4')]
     if not video_files:
-        print(f'エラー: フォルダ "{input_folder}" 内に動画ファイルが見つかりません。')
+        print(f'ERROR: フォルダ "{input_folder}" 内に動画ファイルが見つかりません。')
         exit()
 
-    # 統合対象ファイルが21個か確認
-    if not len(video_files) == 21:
-        print("統合対象ファイル数が21ではありません")
-    print(f"対象ファイル数：{len(video_files)}")
+    print(f"INFO: 結合対象ファイル数：{len(video_files)}")
 
     # 動画ファイルの時間を取得するコード
     total_duration = 0
@@ -49,11 +45,9 @@ def main():
             duration = float(result.stdout.strip())
             total_duration += duration
         except subprocess.CalledProcessError as e:
-            print(f"エラー: {video_file} の時間取得に失敗しました。")
+            print(f"ERROR: {video_file} の時間取得に失敗しました。")
 
-    if not 37500 < total_duration < 38100:
-        print("統合対象ファイルの合計時間が10時間25～35分ではありません")
-    print(f"全動画ファイルの合計時間: {total_duration}秒")
+    print(f"INFO: 結合前の各動画ファイルの合計時間: {total_duration}秒")
 
     # ファイル名でソート
     video_files.sort()
@@ -79,24 +73,20 @@ def main():
 
     try:
         subprocess.run(ffmpeg_command, check=True)
-        print(f'結合完了: {output_file}')
+        print(f'INFO: 結合完了: {output_file}')
 
         # 処理完了後にファイルを移動
         shutil.move(output_file, output_path)
-        # shutil.copy2(output_file, output_path)
-        # os.remove(output_file)
-        print(f'最終出力先: {output_path}')
+        print(f'INFO: 最終出力先: {output_path}')
 
         # 出力ファイルの長さを確認
         duration_command = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', output_path]
         result = subprocess.run(duration_command, capture_output=True, text=True, check=True)
         output_duration = float(result.stdout.strip())
-        if not 37500 < total_duration < 38100:
-            print("統合対象ファイルの合計時間が10時間25～35分ではありません")
-        print(f'出力ファイルの長さ: {output_duration}秒')
+        print(f'INFO: 結合後の動画ファイルの時間: {output_duration}秒')
 
     except subprocess.CalledProcessError as e:
-        print(f'エラー: {e}')
+        print(f'ERROR: {e}')
     finally:
         # 一時ファイル削除
         if os.path.exists('file_list.txt'):
@@ -119,14 +109,14 @@ def main():
                     elif os.path.isdir(day_folder_path):
                         shutil.rmtree(day_folder_path)
                 except Exception as e:
-                    print(f"Failed to delete {day_folder_path}. Reason: {e}")
+                    print(f"ERROR: Failed to delete {day_folder_path}. Reason: {e}")
     else:
-        print(f"キャッシュパス '{cache_path}' が見つかりません。")
+        print(f"ERROR: キャッシュパス '{cache_path}' が見つかりません。")
 
 
 if __name__ == '__main__':
     start_time = time.time()
     main()
     end_time = time.time()
-    print(f'処理時間: {end_time - start_time}秒')
+    print(f'INFO: 処理時間: {end_time - start_time}秒')
 
